@@ -1,0 +1,11 @@
+numpy
+opencv-python
+tqdm
+easydict
+scipy
+progress
+torch>=1.7.0  # to use AMP
+torchvision
+tensorboard
+mmcv
+pycocotools
