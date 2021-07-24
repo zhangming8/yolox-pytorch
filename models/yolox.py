@@ -31,9 +31,11 @@ def get_model(opt):
     # define neck
     neck = YOLOXPAFPN(depth=depth, width=width, in_channels=in_channel, depthwise=opt.depth_wise)
     # define head
-    head = YOLOXHead(num_classes=opt.num_classes, width=width, in_channels=in_channel, depthwise=opt.depth_wise)
+    head = YOLOXHead(num_classes=opt.num_classes, reid_dim=opt.reid_dim, width=width, in_channels=in_channel,
+                     depthwise=opt.depth_wise)
     # define loss
-    loss = YOLOXLoss(opt.num_classes, strides=opt.stride, in_channels=in_channel)
+    loss = YOLOXLoss(opt.num_classes, reid_dim=opt.reid_dim, id_num=opt.id_num, strides=opt.stride,
+                     in_channels=in_channel)
     # define network
     model = YOLOX(opt, backbone=backbone, neck=neck, head=head, loss=loss)
     return model
@@ -47,7 +49,6 @@ class YOLOX(nn.Module):
         self.neck = neck
         self.head = head
         self.loss = loss
-        self.input_shape = self.opt.input_size
 
         self.backbone.init_weights()
         self.neck.init_weights()
@@ -69,6 +70,7 @@ class YOLOX(nn.Module):
                 #     print(k, v, v.dtype)  # always float32
 
         if return_pred:
+            assert ratio is not None
             predicts = yolo_post_process(yolo_outputs, self.opt.stride, self.opt.num_classes, vis_thresh,
                                          self.opt.nms_thresh, self.opt.label_name, ratio)
         if return_loss:

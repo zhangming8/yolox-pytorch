@@ -4,6 +4,7 @@
 # @Email   : zm19921120@126.com
 
 
+import numpy as np
 import traceback
 import torch
 import torch.nn as nn
@@ -11,12 +12,13 @@ import torch.nn.functional as F
 
 
 class YOLOXLoss(nn.Module):
-    def __init__(self, num_classes, strides=[8, 16, 32], in_channels=[256, 512, 1024]):
+    def __init__(self, num_classes, reid_dim=0, id_num=None, strides=[8, 16, 32], in_channels=[256, 512, 1024]):
         super().__init__()
 
         self.n_anchors = 1
         self.num_classes = num_classes
         self.strides = strides
+        self.reid_dim = reid_dim
 
         self.use_l1 = False
         self.l1_loss = nn.L1Loss(reduction="none")
@@ -24,6 +26,15 @@ class YOLOXLoss(nn.Module):
         self.iou_loss = IOUloss(reduction="none")
         self.grids = [torch.zeros(1)] * len(in_channels)
         self.expanded_strides = [None] * len(in_channels)
+
+        if self.reid_dim > 0:
+            assert id_num is not None
+            self.nID = id_num
+            self.classifier = nn.Linear(self.reid_dim, self.nID)
+            self.IDLoss = nn.CrossEntropyLoss(ignore_index=-1)
+            self.emb_scale = np.math.sqrt(2) * np.math.log(self.nID - 1)
+            self.s_det = nn.Parameter(-1.85 * torch.ones(1), requires_grad=False)
+            self.s_id = nn.Parameter(-1.05 * torch.ones(1), requires_grad=False)
 
     def forward(self, preds, targets, imgs=None):
         outputs, origin_preds, x_shifts, y_shifts, expanded_strides = [], [], [], [], []
@@ -74,7 +85,10 @@ class YOLOXLoss(nn.Module):
     def get_losses(self, imgs, x_shifts, y_shifts, expanded_strides, targets, outputs, origin_preds, dtype):
         bbox_preds = outputs[:, :, :4]  # [batch, n_anchors_all, 4]
         obj_preds = outputs[:, :, 4].unsqueeze(-1)  # [batch, n_anchors_all, 1]
-        cls_preds = outputs[:, :, 5:]  # [batch, n_anchors_all, n_cls]
+        cls_preds = outputs[:, :, 5:self.num_classes+5]  # [batch, n_anchors_all, n_cls]
+
+        if self.reid_dim > 0:
+            reid_preds = outputs[:, :, self.num_classes+5:]
 
         # calculate targets
         mixup = targets.shape[2] > 5
@@ -95,6 +109,7 @@ class YOLOXLoss(nn.Module):
         reg_targets = []
         l1_targets = []
         obj_targets = []
+        reid_targets = []
         fg_masks = []
 
         num_fg = 0.0
@@ -110,9 +125,11 @@ class YOLOXLoss(nn.Module):
                 obj_target = outputs.new_zeros((total_num_anchors, 1))
                 fg_mask = outputs.new_zeros(total_num_anchors).bool()
             else:
-                gt_bboxes_per_image = targets[batch_idx, :num_gt, 1:5]
                 gt_classes = targets[batch_idx, :num_gt, 0]
+                gt_bboxes_per_image = targets[batch_idx, :num_gt, 1:5]
                 bboxes_preds_per_image = bbox_preds[batch_idx]
+                if self.reid_dim > 0:
+                    gt_tracking_id = targets[batch_idx, :num_gt, 5]
 
                 try:
                     gt_matched_classes, fg_mask, pred_ious_this_matching, matched_gt_inds, num_fg_img = self.get_assignments(
@@ -144,6 +161,9 @@ class YOLOXLoss(nn.Module):
                 obj_target = fg_mask.unsqueeze(-1)
                 reg_target = gt_bboxes_per_image[matched_gt_inds]
 
+                if self.reid_dim > 0:
+                    reid_target = gt_tracking_id[fg_mask]
+
                 if self.use_l1:
                     l1_target = self.get_l1_target(
                         outputs.new_zeros((num_fg_img, 4)),
@@ -159,6 +179,8 @@ class YOLOXLoss(nn.Module):
             fg_masks.append(fg_mask)
             if self.use_l1:
                 l1_targets.append(l1_target)
+            if self.reid_dim > 0:
+                reid_targets.append(reid_target)
 
         cls_targets = torch.cat(cls_targets, 0)
         reg_targets = torch.cat(reg_targets, 0)
@@ -166,15 +188,19 @@ class YOLOXLoss(nn.Module):
         fg_masks = torch.cat(fg_masks, 0)
         if self.use_l1:
             l1_targets = torch.cat(l1_targets, 0)
+        if self.reid_dim > 0:
+            reid_targets = torch.cat(reid_targets, 0)
 
         num_fg = max(num_fg, 1)
         loss_iou = (self.iou_loss(bbox_preds.view(-1, 4)[fg_masks], reg_targets)).sum() / num_fg
         loss_obj = (self.bcewithlog_loss(obj_preds.view(-1, 1), obj_targets)).sum() / num_fg
         loss_cls = (self.bcewithlog_loss(cls_preds.view(-1, self.num_classes)[fg_masks], cls_targets)).sum() / num_fg
-        if self.use_l1:
-            loss_l1 = (self.l1_loss(origin_preds.view(-1, 4)[fg_masks], l1_targets)).sum() / num_fg
-        else:
-            loss_l1 = 0.0
+        loss_l1 = (self.l1_loss(origin_preds.view(-1, 4)[fg_masks], l1_targets)).sum() / num_fg if self.use_l1 else 0.
+        if self.reid_dim > 0:
+            reid_feat = reid_preds.view(-1, self.reid_dim)[fg_masks]
+            reid_feat = self.emb_scale * F.normalize(reid_feat)
+            reid_output = self.classifier(reid_feat)
+            reid_loss = self.IDLoss(reid_output, reid_targets)
 
         reg_weight = 5.0
         loss = reg_weight * loss_iou + loss_obj + loss_cls + loss_l1

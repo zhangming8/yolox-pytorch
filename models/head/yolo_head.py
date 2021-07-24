@@ -13,12 +13,13 @@ __all__ = ['YOLOXHead']
 
 
 class YOLOXHead(nn.Module):
-    def __init__(self, num_classes=80, width=1.0, in_channels=[256, 512, 1024], act="silu", depthwise=False):
+    def __init__(self, num_classes=80, reid_dim=0, width=1.0, in_channels=[256, 512, 1024], act="silu",
+                 depthwise=False):
         super().__init__()
 
         self.n_anchors = 1
         self.num_classes = num_classes
-        self.decode_in_inference = True  # for deploy, set to False
+        self.reid_dim = reid_dim
         Conv = DWConv if depthwise else BaseConv
 
         self.stems = nn.ModuleList()
@@ -28,6 +29,8 @@ class YOLOXHead(nn.Module):
         self.cls_preds = nn.ModuleList()
         self.reg_preds = nn.ModuleList()
         self.obj_preds = nn.ModuleList()
+        if self.reid_dim > 0:
+            self.reid_preds = nn.ModuleList()
 
         for i in range(len(in_channels)):
             self.stems.append(
@@ -103,6 +106,16 @@ class YOLOXHead(nn.Module):
                     padding=0,
                 )
             )
+            if self.reid_dim > 0:
+                self.reid_preds.append(
+                    nn.Conv2d(
+                        in_channels=int(256 * width),
+                        out_channels=self.reid_dim,
+                        kernel_size=1,
+                        stride=1,
+                        padding=0,
+                    )
+                )
 
     def init_weights(self, prior_prob=1e-2):
         for m in self.modules():
@@ -124,17 +137,36 @@ class YOLOXHead(nn.Module):
         outputs = []
         for k, (cls_conv, reg_conv, x) in enumerate(zip(self.cls_convs, self.reg_convs, feats)):
             x = self.stems[k](x)
-            cls_x = x
-            reg_x = x
 
-            cls_feat = cls_conv(cls_x)
+            # classify
+            cls_feat = cls_conv(x)
             cls_output = self.cls_preds[k](cls_feat)
 
-            reg_feat = reg_conv(reg_x)
+            # regress, object, (reid)
+            reg_feat = reg_conv(x)
             reg_output = self.reg_preds[k](reg_feat)
             obj_output = self.obj_preds[k](reg_feat)
-
-            output = torch.cat([reg_output, obj_output, cls_output], 1)
+            if self.reid_dim > 0:
+                reid_output = self.reid_preds[k](reg_feat)
+                output = torch.cat([reg_output, obj_output, cls_output, reid_output], 1)
+            else:
+                output = torch.cat([reg_output, obj_output, cls_output], 1)
             outputs.append(output)
 
         return outputs
+
+
+if __name__ == "__main__":
+    from thop import profile
+
+    in_channel = [256, 512, 1024]
+    feats = [torch.rand([1, in_channel[0], 64, 64]), torch.rand([1, in_channel[1], 32, 32]),
+             torch.rand([1, in_channel[2], 16, 16])]
+    head = YOLOXHead(reid_dim=0)
+    head.init_weights()
+    head.eval()
+    total_ops, total_params = profile(head, (feats,))
+    print("total_ops {:.2f}G, total_params {:.2f}M".format(total_ops / 1e9, total_params / 1e6))
+    out = head(feats)
+    for o in out:
+        print(o.size())

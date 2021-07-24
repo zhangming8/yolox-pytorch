@@ -96,9 +96,6 @@ def vis_inputs(inputs, targets, opt):
 
 def run_epoch(data_iter, loader, total_iter, e, phase, opt):
     for batch_i in range(total_iter):
-        # loader.dataset.enable_mosaic = False
-        # loader.dataset.enable_mixup = False
-        loader.close_mosaic()
         batch = next(data_iter)
         inps, targets, img_info, ind = batch
         print("------------ epoch {} batch {}/{} ---------------".format(e, batch_i, total_iter))
@@ -135,6 +132,10 @@ def main():
     total_iter = len(loader)
     data_iter = iter(loader)
     for e in range(100):
+        # train_loader.dataset.enable_mosaic = False
+        # train_loader.dataset.enable_mixup = False
+        # train_loader.close_mosaic()
+        # print(train_loader.batch_sampler.mosaic)
         run_epoch(data_iter, loader, total_iter, e, phase, opt)
 
 

@@ -34,6 +34,10 @@ opt.num_epochs = 300
 opt.random_size = (14, 26)  # None
 opt.accumulate = 1  # real batch size = accumulate * batch_size
 
+# TODO: support MOT(multi-object tracking) like FairMot/JDE when reid_dim > 0
+opt.reid_dim = 0  # 128
+opt.id_num = None  # tracking id number in train dataset
+
 opt.warmup_lr = 0
 opt.basic_lr_per_img = 0.01 / 64.0
 opt.scheduler = "yoloxwarmcos"

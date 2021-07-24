@@ -47,8 +47,10 @@ def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, 
 
         # inference and call loss
         return_pred = phase != 'train' and "ap" in opt.metric.lower()
-        preds, loss_stats = model_with_loss(inps, targets=targets, return_loss=True, return_pred=return_pred)
-
+        img_ratio = [float(min(opt.test_size[0] / i[0], opt.test_size[1] / i[1])) for i in
+                     img_info] if return_pred else None
+        preds, loss_stats = model_with_loss(inps, targets=targets, return_loss=True, return_pred=return_pred,
+                                            ratio=img_ratio)
         if phase == 'train':
             iteration = (epoch - 1) * num_iter + iter_id
             scaler.scale(loss_stats["loss"]).backward()
@@ -131,7 +133,8 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
         if epoch == opt.num_epochs - opt.no_aug_epochs:
             logger.write("--->No mosaic aug now! epoch {}\n".format(epoch))
             # TODO: make sure it works. https://github.com/Megvii-BaseDetection/YOLOX/issues/85
-            train_loader.close_mosaic()
+            # train_loader.close_mosaic()
+            train_loader.dataset.enable_mosaic = False
             if isinstance(model, torch.nn.DataParallel):
                 model.module.loss.use_l1 = True
             else:
