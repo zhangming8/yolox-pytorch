@@ -132,8 +132,6 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
     for epoch in range(start_epoch + 1, opt.num_epochs + 1):
         if epoch == opt.num_epochs - opt.no_aug_epochs:
             logger.write("--->No mosaic aug now! epoch {}\n".format(epoch))
-            # TODO: make sure it works. https://github.com/Megvii-BaseDetection/YOLOX/issues/85
-            # train_loader.close_mosaic()
             train_loader.dataset.enable_mosaic = False
             if isinstance(model, torch.nn.DataParallel):
                 model.module.loss.use_l1 = True
@@ -160,7 +158,7 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
             write_log(loss_dict_val, logger, epoch, "val")
 
             if "ap" in opt.metric.lower():
-                ap, ap_0_5 = val_loader.dataset.run_eval(preds, opt.save_dir)
+                ap, ap_0_5 = val_loader.dataset.run_coco_eval(preds, opt.save_dir)
                 logger.write(
                     "Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = {:.3f}\n".format(ap))
                 logger.write(
@@ -213,8 +211,8 @@ def main():
     no_aug = start_epoch >= opt.num_epochs - opt.no_aug_epochs
     train_loader, val_loader = get_dataloader(opt, no_aug=no_aug)
     dataset_label = val_loader.dataset.classes
-    assert opt.label_name == dataset_label, "[error] label_name != dataset's {} != {}".format(opt.label_name,
-                                                                                              dataset_label)
+    assert opt.label_name == dataset_label, "[ERROR] 'opt.label_name' should be the same as dataset's {} != {}".format(
+        opt.label_name, dataset_label)
     # learning ratio scheduler
     base_lr = opt.basic_lr_per_img * opt.batch_size
     lr_scheduler = LRScheduler(opt.scheduler, base_lr, len(train_loader), opt.num_epochs,

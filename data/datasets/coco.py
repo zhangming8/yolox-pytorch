@@ -23,6 +23,7 @@ class COCODataset(Dataset):
             json_file="instances_train2017.json",
             name="train2017",
             img_size=(416, 416),
+            tracking=False,
             preproc=None,
     ):
         """
@@ -40,6 +41,7 @@ class COCODataset(Dataset):
         self.name = name
         self.img_size = img_size
         self.preproc = preproc
+        self.tracking = tracking
         #################
         # self.name = "val2017"
         # self.json_file = self.json_file.replace("train", "val")
@@ -62,7 +64,7 @@ class COCODataset(Dataset):
 
     def convert_eval_format(self, all_bboxes):
         detections = []
-        for image_id in all_bboxes:
+        for image_id in all_bboxes.keys():
             one_img_res = all_bboxes[image_id]
             for res in one_img_res:
                 cls, conf, bbox = res[0], res[1], res[2]
@@ -70,10 +72,10 @@ class COCODataset(Dataset):
                     'bbox': [bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]],
                     'category_id': self.class_ids[self.classes.index(cls)],
                     'image_id': int(image_id),
-                    'score': conf})
+                    'score': float(conf)})
         return detections
 
-    def run_eval(self, results, save_dir):
+    def run_coco_eval(self, results, save_dir):
         json.dump(self.convert_eval_format(results), open('{}/results.json'.format(save_dir), 'w'))
         coco_det = self.coco.loadRes('{}/results.json'.format(save_dir))
         coco_eval = COCOeval(self.coco, coco_det, "bbox")
@@ -85,7 +87,7 @@ class COCODataset(Dataset):
 
     def load_anno(self, index):
         id_ = self.img_ids[index]
-        anno_ids = self.coco.getAnnIds(imgIds=[int(id_)], iscrowd=False)
+        anno_ids = self.coco.getAnnIds(imgIds=[id_], iscrowd=False)
         annotations = self.coco.loadAnns(anno_ids)
 
         im_ann = self.coco.loadImgs(id_)[0]
@@ -105,12 +107,17 @@ class COCODataset(Dataset):
         objs = valid_objs
         num_objs = len(objs)
 
-        res = np.zeros((num_objs, 5))
+        res = np.zeros((num_objs, 6 if self.tracking else 5))
 
         for ix, obj in enumerate(objs):
             cls = self.class_ids.index(obj["category_id"])
             res[ix, 0:4] = obj["clean_bbox"]
             res[ix, 4] = cls
+            if self.tracking:
+                assert "tracking_id" in obj.keys(), 'cannot find "tracking_id" in your dataset'
+                res[ix, 5] = obj['tracking_id']
+                # print('errorrrrrrrr: replace tracking_id to cls')
+                # res[ix, 5] = cls
         return res
 
     def pull_item(self, index):

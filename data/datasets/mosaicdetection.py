@@ -34,11 +34,8 @@ def get_mosaic_coordinate(mosaic_image, mosaic_index, xc, yc, w, h, input_h, inp
 class MosaicDetection(Dataset):
     """Detection dataset wrapper that performs mixup for normal dataset."""
 
-    def __init__(
-            self, dataset, img_size, mosaic=True, preproc=None,
-            degrees=10.0, translate=0.1, scale=(0.5, 1.5), mscale=(0.5, 1.5),
-            shear=2.0, perspective=0.0, enable_mixup=True, *args
-    ):
+    def __init__(self, dataset, img_size, mosaic=True, preproc=None, degrees=10.0, translate=0.1, scale=(0.5, 1.5),
+                 mscale=(0.5, 1.5), shear=2.0, perspective=0.0, enable_mixup=True, tracking=False):
         """
 
         Args:
@@ -66,6 +63,7 @@ class MosaicDetection(Dataset):
         self.mixup_scale = mscale
         self.enable_mosaic = mosaic
         self.enable_mixup = enable_mixup
+        self.tracking = tracking
 
     def __len__(self):
         return len(self._dataset)
@@ -88,9 +86,7 @@ class MosaicDetection(Dataset):
                 img, _labels, _, _ = self._dataset.pull_item(index)
                 h0, w0 = img.shape[:2]  # orig hw
                 scale = min(1. * input_h / h0, 1. * input_w / w0)
-                img = cv2.resize(
-                    img, (int(w0 * scale), int(h0 * scale)), interpolation=cv2.INTER_LINEAR
-                )
+                img = cv2.resize(img, (int(w0 * scale), int(h0 * scale)), interpolation=cv2.INTER_LINEAR)
                 # generate output mosaic image
                 (h, w, c) = img.shape[:3]
                 if i_mosaic == 0:
@@ -212,7 +208,11 @@ class MosaicDetection(Dataset):
         if keep_list.sum() >= 1.0:
             cls_labels = cp_labels[keep_list, 4:5]
             box_labels = cp_bboxes_transformed_np[keep_list]
-            labels = np.hstack((box_labels, cls_labels))
+            if self.tracking:
+                tracking_id_labels = cp_labels[keep_list, 5:6]
+                labels = np.hstack((box_labels, cls_labels, tracking_id_labels))
+            else:
+                labels = np.hstack((box_labels, cls_labels))
             origin_labels = np.vstack((origin_labels, labels))
             origin_img = origin_img.astype(np.float32)
             origin_img = 0.5 * origin_img + 0.5 * padded_cropped_img.astype(np.float32)

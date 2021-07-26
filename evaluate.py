@@ -37,6 +37,8 @@ def evaluate():
         results = detector.run(img, vis_thresh=0.01)
         for res in results:
             cls, conf, bbox = res[0], res[1], res[2]
+            if len(res) > 3:
+                reid_feat = res[4]
             cls_index = opt.class_name.index(cls)
             coco_res.append(
                 {'bbox': [bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]],

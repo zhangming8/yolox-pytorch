@@ -68,6 +68,7 @@ def load_model(model, model_path, optimizer=None, scaler=None, resume=False):
             print('==>> No optimizer in checkpoint.')
 
     if optimizer is not None:
+        print("==>> Set start_epoch {}".format(start_epoch))
         return model, optimizer, start_epoch, scaler
     else:
         return model

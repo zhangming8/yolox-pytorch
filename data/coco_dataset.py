@@ -9,28 +9,30 @@ import torch
 import sys
 
 sys.path.append(".")
-from data import (COCODataset, TrainTransform, YoloBatchSampler, DataLoader, InfiniteSampler, MosaicDetection,
-                  ValTransform)
+from data import (COCODataset, TrainTransform, YoloBatchSampler, DataLoader, InfiniteSampler, MosaicDetection)
 
 
 def get_dataloader(opt, no_aug=False):
     # train
+    do_tracking = opt.reid_dim > 0
     train_dataset = COCODataset(data_dir=opt.data_dir,
                                 json_file=opt.train_ann,
                                 img_size=opt.input_size,
-                                preproc=TrainTransform(rgb_means=opt.rgb_means, std=opt.std, max_labels=50),
+                                tracking=do_tracking,
+                                preproc=TrainTransform(rgb_means=opt.rgb_means, std=opt.std, tracking=do_tracking),
                                 )
     train_dataset = MosaicDetection(
         train_dataset,
         mosaic=not no_aug,
         img_size=opt.input_size,
-        preproc=TrainTransform(rgb_means=opt.rgb_means, std=opt.std, max_labels=120),
+        preproc=TrainTransform(rgb_means=opt.rgb_means, std=opt.std, max_labels=120, tracking=do_tracking),
         degrees=opt.degrees,
         translate=opt.translate,
         scale=opt.scale,
         shear=opt.shear,
         perspective=opt.perspective,
         enable_mixup=opt.enable_mixup,
+        tracking=do_tracking,
     )
     train_sampler = InfiniteSampler(len(train_dataset), seed=opt.seed)
     batch_sampler = YoloBatchSampler(
@@ -49,7 +51,9 @@ def get_dataloader(opt, no_aug=False):
         json_file=opt.val_ann,
         name="val2017",
         img_size=opt.test_size,
-        preproc=ValTransform(rgb_means=opt.rgb_means, std=opt.std))
+        tracking=do_tracking,
+        preproc=TrainTransform(rgb_means=opt.rgb_means, std=opt.std, max_labels=120, tracking=do_tracking,
+                               augment=False))
     val_sampler = torch.utils.data.SequentialSampler(val_dataset)
     val_kwargs = {"num_workers": opt.data_num_workers, "pin_memory": True, "sampler": val_sampler,
                   "batch_size": opt.batch_size}
@@ -68,9 +72,16 @@ def vis_inputs(inputs, targets, opt):
         img = (((inp.transpose((1, 2, 0)) * opt.std) + opt.rgb_means) * 255).astype(np.uint8)
         img = img[:, :, ::-1]
         img = np.ascontiguousarray(img)
+        gt_n = 0
         for t in target:
             if t.sum() > 0:
-                cls, c_x, c_y, w, h = [int(i) for i in t]
+                if len(t) == 5:
+                    cls, c_x, c_y, w, h = [int(i) for i in t]
+                    tracking_id = None
+                elif len(t) == 6:
+                    cls, c_x, c_y, w, h, tracking_id = [int(i) for i in t]
+                else:
+                    raise ValueError("target shape != 5 or 6")
                 bbox = [c_x - w // 2, c_y - h // 2, c_x + w // 2, c_y + h // 2]
                 label = opt.label_name[cls]
                 # print(label, bbox)
@@ -78,14 +89,16 @@ def vis_inputs(inputs, targets, opt):
                 # show box
                 cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), color, 2)
                 # show label and conf
-                txt = '{}'.format(label)
+                txt = '{}-{}'.format(label, tracking_id) if tracking_id is not None else '{}'.format(label)
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 txt_size = cv2.getTextSize(txt, font, 0.5, 2)[0]
                 cv2.rectangle(img, (bbox[0], bbox[1] - txt_size[1] - 2), (bbox[0] + txt_size[0], bbox[1] - 2), color,
                               -1)
                 cv2.putText(img, txt, (bbox[0], bbox[1] - 2), font, 0.5, (255, 255, 255), thickness=1,
                             lineType=cv2.LINE_AA)
+                gt_n += 1
 
+        print("img {}/{} gt number: {}".format(b_i, len(inputs), gt_n))
         cv2.namedWindow("input", 0)
         cv2.imshow("input", img)
         key = cv2.waitKey(0)
@@ -99,7 +112,7 @@ def run_epoch(data_iter, loader, total_iter, e, phase, opt):
         batch = next(data_iter)
         inps, targets, img_info, ind = batch
         print("------------ epoch {} batch {}/{} ---------------".format(e, batch_i, total_iter))
-        print(inps.shape, targets.shape)
+        print("batch img shape {}, target shape {}".format(inps.shape, targets.shape))
         vis_inputs(inps, targets, opt)
         if batch_i == 0:
             print(ind)
@@ -119,8 +132,10 @@ def main():
     from config import opt
 
     opt.input_size = (640, 640)
+    opt.test_size = (640, 640)
     opt.batch_size = 2
     opt.data_num_workers = 0
+    opt.reid_dim = 0  # 128
     print(opt)
     train_loader, val_loader = get_dataloader(opt, no_aug=False)
 
@@ -132,8 +147,8 @@ def main():
     total_iter = len(loader)
     data_iter = iter(loader)
     for e in range(100):
-        # train_loader.dataset.enable_mosaic = False
         # train_loader.dataset.enable_mixup = False
+        # train_loader.dataset.enable_mosaic = False
         # train_loader.close_mosaic()
         # print(train_loader.batch_sampler.mosaic)
         run_epoch(data_iter, loader, total_iter, e, phase, opt)

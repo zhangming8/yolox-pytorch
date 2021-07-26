@@ -34,9 +34,25 @@ opt.num_epochs = 300
 opt.random_size = (14, 26)  # None
 opt.accumulate = 1  # real batch size = accumulate * batch_size
 
+# coco 80 classes
+opt.label_name = [
+    'person', 'bicycle', 'car', 'motorcycle', 'airplane',
+    'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
+    'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
+    'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
+    'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass',
+    'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
+    'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
+    'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv',
+    'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
+    'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
+    'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+# opt.label_name = ['person']
 # TODO: support MOT(multi-object tracking) like FairMot/JDE when reid_dim > 0
 opt.reid_dim = 0  # 128
-opt.id_num = None  # tracking id number in train dataset
+opt.tracking_id_nums = None  # tracking id number in train dataset
 
 opt.warmup_lr = 0
 opt.basic_lr_per_img = 0.01 / 64.0
@@ -72,20 +88,6 @@ opt.use_amp = False  # True
 opt.cuda_benchmark = True
 opt.nms_thresh = 0.65
 
-opt.label_name = [
-    'person', 'bicycle', 'car', 'motorcycle', 'airplane',
-    'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
-    'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
-    'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
-    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
-    'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
-    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass',
-    'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
-    'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
-    'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv',
-    'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
-    'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
-    'scissors', 'teddy bear', 'hair drier', 'toothbrush']
 opt.rgb_means = [0.485, 0.456, 0.406]
 opt.std = [0.229, 0.224, 0.225]
 

@@ -32,7 +32,11 @@ def detect():
         print(results)
 
         for res_i, res in enumerate(results):
-            label, conf, bbox = res
+            label, conf, bbox = res[:3]
+            if len(res) > 3:
+                reid_feat = res[4]
+                print("reid feat dim {}".format(len(reid_feat)))
+
             color = label_color[opt.label_name.index(label)]
             # show box
             cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), color, 2)

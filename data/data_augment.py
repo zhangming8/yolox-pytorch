@@ -184,24 +184,23 @@ def preproc(image, input_size, mean, std, swap=(2, 0, 1)):
 
 
 class TrainTransform:
-    def __init__(self, p=0.5, rgb_means=None, std=None, max_labels=50):
+    def __init__(self, p=0.5, rgb_means=None, std=None, tracking=False, max_labels=50, augment=True):
         self.means = rgb_means
         self.std = std
         self.p = p
+        self.tracking = tracking
         self.max_labels = max_labels
+        self.augment = augment
 
     def __call__(self, image, targets, input_dim):
+        assert targets.shape[1] == 6 if self.tracking else 5
+        lshape = targets.shape[1]
+
         boxes = targets[:, :4].copy()
         labels = targets[:, 4].copy()
-        if targets.shape[1] > 5:
-            mixup = True
-            ratios = targets[:, -1].copy()
-            ratios_o = targets[:, -1].copy()
-        else:
-            mixup = False
-            ratios = None
-            ratios_o = None
-        lshape = 6 if mixup else 5
+        if self.tracking:
+            tracking_id = targets[:, 5].copy()
+
         if len(boxes) == 0:
             targets = np.zeros((self.max_labels, lshape), dtype=np.float32)
             image, r_o = preproc(image, input_dim, self.means, self.std)
@@ -211,8 +210,12 @@ class TrainTransform:
         image_o = image.copy()
         targets_o = targets.copy()
         height_o, width_o, _ = image_o.shape
+
         boxes_o = targets_o[:, :4]
         labels_o = targets_o[:, 4]
+        if self.tracking:
+            tracking_id_o = targets_o[:, 5]
+
         # bbox_o: [xyxy] to [c_x,c_y,w,h]
         b_x_o = (boxes_o[:, 2] + boxes_o[:, 0]) * 0.5
         b_y_o = (boxes_o[:, 3] + boxes_o[:, 1]) * 0.5
@@ -223,8 +226,12 @@ class TrainTransform:
         boxes_o[:, 2] = b_w_o
         boxes_o[:, 3] = b_h_o
 
-        image_t = _distort(image)
-        image_t, boxes = _mirror(image_t, boxes)
+        # color aug
+        image_t = _distort(image) if self.augment else image
+        # flip
+        if self.augment:
+            image_t, boxes = _mirror(image_t, boxes)
+
         height, width, _ = image_t.shape
         image_t, r_ = preproc(image_t, input_dim, self.means, self.std)
         boxes = boxes.copy()
@@ -243,119 +250,26 @@ class TrainTransform:
         mask_b = np.minimum(boxes[:, 2], boxes[:, 3]) > 8
         boxes_t = boxes[mask_b]
         labels_t = labels[mask_b].copy()
-        if mixup:
-            ratios_t = ratios[mask_b].copy()
+        if self.tracking:
+            tracking_id_t = tracking_id[mask_b].copy()
 
         if len(boxes_t) == 0:
             image_t, r_o = preproc(image_o, input_dim, self.means, self.std)
             boxes_o *= r_o
             boxes_t = boxes_o
             labels_t = labels_o
-            ratios_t = ratios_o
+            if self.tracking:
+                tracking_id_t = tracking_id_o
 
         labels_t = np.expand_dims(labels_t, 1)
-        if mixup:
-            ratios_t = np.expand_dims(ratios_t, 1)
-            targets_t = np.hstack((labels_t, boxes_t, ratios_t))
+        if self.tracking:
+            tracking_id_t = np.expand_dims(tracking_id_t, 1)
+            targets_t = np.hstack((labels_t, boxes_t, tracking_id_t))
         else:
             targets_t = np.hstack((labels_t, boxes_t))
+
         padded_labels = np.zeros((self.max_labels, lshape))
         padded_labels[range(len(targets_t))[: self.max_labels]] = targets_t[: self.max_labels]
         padded_labels = np.ascontiguousarray(padded_labels, dtype=np.float32)
         image_t = np.ascontiguousarray(image_t, dtype=np.float32)
-        return image_t, padded_labels
-
-
-class ValTransform:
-    """
-    Defines the transformations that should be applied to test PIL image
-    for input into the network
-
-    dimension -> tensorize -> color adj
-
-    Arguments:
-        resize (int): input dimension to SSD
-        rgb_means ((int,int,int)): average RGB of the dataset
-            (104,117,123)
-        swap ((int,int,int)): final order of channels
-
-    Returns:
-        transform (transform) : callable transform to be applied to test/val
-        data
-    """
-
-    def __init__(self, rgb_means=None, std=None, swap=(2, 0, 1), max_labels=120):
-        self.means = rgb_means
-        self.swap = swap
-        self.std = std
-        self.max_labels = max_labels
-
-    # assume input is cv2 img for now
-    def __call__(self, img, targets, input_size):
-        boxes = targets[:, :4].copy()
-        labels = targets[:, 4].copy()
-        if targets.shape[1] > 5:
-            mixup = True
-            ratios = targets[:, -1].copy()
-            ratios_o = targets[:, -1].copy()
-        else:
-            mixup = False
-            ratios = None
-            ratios_o = None
-        lshape = 6 if mixup else 5
-
-        image_o = img.copy()
-        targets_o = targets.copy()
-        height_o, width_o, _ = image_o.shape
-        boxes_o = targets_o[:, :4]
-        labels_o = targets_o[:, 4]
-        # bbox_o: [xyxy] to [c_x,c_y,w,h]
-        b_x_o = (boxes_o[:, 2] + boxes_o[:, 0]) * 0.5
-        b_y_o = (boxes_o[:, 3] + boxes_o[:, 1]) * 0.5
-        b_w_o = (boxes_o[:, 2] - boxes_o[:, 0]) * 1.0
-        b_h_o = (boxes_o[:, 3] - boxes_o[:, 1]) * 1.0
-        boxes_o[:, 0] = b_x_o
-        boxes_o[:, 1] = b_y_o
-        boxes_o[:, 2] = b_w_o
-        boxes_o[:, 3] = b_h_o
-
-        height, width, _ = image_o.shape
-        image_t, r_ = preproc(image_o, input_size, self.means, self.std)
-        boxes = boxes.copy()
-        # boxes [xyxy] 2 [cx,cy,w,h]
-        b_x = (boxes[:, 2] + boxes[:, 0]) * 0.5
-        b_y = (boxes[:, 3] + boxes[:, 1]) * 0.5
-        b_w = (boxes[:, 2] - boxes[:, 0]) * 1.0
-        b_h = (boxes[:, 3] - boxes[:, 1]) * 1.0
-        boxes[:, 0] = b_x
-        boxes[:, 1] = b_y
-        boxes[:, 2] = b_w
-        boxes[:, 3] = b_h
-
-        boxes *= r_
-
-        mask_b = np.minimum(boxes[:, 2], boxes[:, 3]) > 8
-        boxes_t = boxes[mask_b]
-        labels_t = labels[mask_b].copy()
-        if mixup:
-            ratios_t = ratios[mask_b].copy()
-
-        if len(boxes_t) == 0:
-            image_t, r_o = preproc(image_o, input_size, self.means, self.std)
-            boxes_o *= r_o
-            boxes_t = boxes_o
-            labels_t = labels_o
-            ratios_t = ratios_o
-
-        labels_t = np.expand_dims(labels_t, 1)
-        if mixup:
-            ratios_t = np.expand_dims(ratios_t, 1)
-            targets_t = np.hstack((labels_t, boxes_t, ratios_t))
-        else:
-            targets_t = np.hstack((labels_t, boxes_t))
-        padded_labels = np.zeros((self.max_labels, lshape))
-        padded_labels[range(len(targets_t))[: self.max_labels]] = targets_t[: self.max_labels]
-        padded_labels = np.ascontiguousarray(padded_labels, dtype=np.float32)
-        image_t = np.ascontiguousarray(image_t, dtype=np.float32)
-
         return image_t, padded_labels

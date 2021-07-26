@@ -1,4 +1,6 @@
 
+#!demo/*.jpg
+
 *.so
 *.o
 .DS_Store

@@ -4,18 +4,13 @@
 # @Email   : zm19921120@126.com
 
 import torch
+import torch.nn.functional as F
 import torchvision
 
 
-def yolo_post_process(outputs, down_strides, num_classes, conf_thre, nms_thre, label_name, img_ratios):
+def yolox_post_process(outputs, down_strides, num_classes, conf_thre, nms_thre, label_name, img_ratios):
     hw = [i.shape[-2:] for i in outputs]
-    # x,y,w,h,obj,cls
-    for x in outputs:
-        x[:, 4:, :, :].sigmoid_()
-    outputs = torch.cat([x.flatten(start_dim=2) for x in outputs], dim=2).permute(0, 2, 1)
-
-    grids = []
-    strides = []
+    grids, strides = [], []
     for (hsize, wsize), stride in zip(hw, down_strides):
         yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)])
         grid = torch.stack((xv, yv), 2).view(1, -1, 2)
@@ -23,30 +18,42 @@ def yolo_post_process(outputs, down_strides, num_classes, conf_thre, nms_thre, l
         shape = grid.shape[:2]
         strides.append(torch.full((*shape, 1), stride))
 
+    outputs = torch.cat([x.flatten(start_dim=2) for x in outputs], dim=2).permute(0, 2, 1)  # bs, all_anchor, 85(+128)
     grids = torch.cat(grids, dim=1).type(outputs.dtype)
     strides = torch.cat(strides, dim=1).type(outputs.dtype)
 
-    outputs[..., :2] = (outputs[..., :2] + grids) * strides
+    # x, y
+    outputs[..., 0:2] = (outputs[..., 0:2] + grids) * strides
+    # w, h
     outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
+    # obj
+    outputs[..., 4:5] = torch.sigmoid(outputs[..., 4:5])
+    # 80 class
+    outputs[..., 5:5 + num_classes] = torch.sigmoid(outputs[..., 5:5 + num_classes])
+    # reid
+    reid_dim = outputs.shape[2] - num_classes - 5
+    if reid_dim > 0:
+        outputs[..., 5 + num_classes:] = F.normalize(outputs[..., 5 + num_classes:], dim=2)
 
     box_corner = outputs.new(outputs.shape)
-    box_corner[:, :, 0] = outputs[:, :, 0] - outputs[:, :, 2] / 2
-    box_corner[:, :, 1] = outputs[:, :, 1] - outputs[:, :, 3] / 2
-    box_corner[:, :, 2] = outputs[:, :, 0] + outputs[:, :, 2] / 2
-    box_corner[:, :, 3] = outputs[:, :, 1] + outputs[:, :, 3] / 2
+    box_corner[:, :, 0] = outputs[:, :, 0] - outputs[:, :, 2] / 2  # x1
+    box_corner[:, :, 1] = outputs[:, :, 1] - outputs[:, :, 3] / 2  # y1
+    box_corner[:, :, 2] = outputs[:, :, 0] + outputs[:, :, 2] / 2  # x2
+    box_corner[:, :, 3] = outputs[:, :, 1] + outputs[:, :, 3] / 2  # y2
     outputs[:, :, :4] = box_corner[:, :, :4]
 
     output = [[] for _ in range(len(outputs))]
     for i, image_pred in enumerate(outputs):
-        # If none are remaining => process next image
-        if not image_pred.size(0):
-            continue
         # Get score and class with highest confidence
         class_conf, class_pred = torch.max(image_pred[:, 5: 5 + num_classes], 1, keepdim=True)
         conf_mask = (image_pred[:, 4] * class_conf.squeeze() >= conf_thre).squeeze()
         # _, conf_mask = torch.topk((image_pred[:, 4] * class_conf.squeeze()), 1000)
         # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
-        detections = torch.cat((image_pred[:, :5], class_conf, class_pred.float()), 1)
+        if reid_dim > 0:
+            detections = torch.cat((image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5 + num_classes:]),
+                                   1)
+        else:
+            detections = torch.cat((image_pred[:, :5], class_conf, class_pred.float()), 1)
         detections = detections[conf_mask]
         if not detections.size(0):
             continue
@@ -57,9 +64,14 @@ def yolo_post_process(outputs, down_strides, num_classes, conf_thre, nms_thre, l
         detections[:, :4] = detections[:, :4] / img_ratios[i]
 
         for det in detections:
-            x1, y1, x2, y2, obj_conf, class_conf, class_pred = det
+            x1, y1, x2, y2, obj_conf, class_conf, class_pred = det[0:7]
             bbox = [int(x1), int(y1), int(x2), int(y2)]
             conf = float(obj_conf * class_conf)
             label = label_name[int(class_pred)]
-            output[i].append([label, conf, bbox])
+
+            if reid_dim > 0:
+                reid_feat = det[7:].cpu().numpy().tolist()
+                output[i].append([label, conf, bbox, reid_feat])
+            else:
+                output[i].append([label, conf, bbox])
     return output

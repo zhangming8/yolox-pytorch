@@ -12,7 +12,7 @@ from models.backbone import CSPDarknet
 from models.neck.yolo_fpn import YOLOXPAFPN
 from models.head.yolo_head import YOLOXHead
 from models.losses import YOLOXLoss
-from models.post_process import yolo_post_process
+from models.post_process import yolox_post_process
 from data.data_augment import preproc
 from utils.model_utils import load_model
 
@@ -34,7 +34,7 @@ def get_model(opt):
     head = YOLOXHead(num_classes=opt.num_classes, reid_dim=opt.reid_dim, width=width, in_channels=in_channel,
                      depthwise=opt.depth_wise)
     # define loss
-    loss = YOLOXLoss(opt.num_classes, reid_dim=opt.reid_dim, id_num=opt.id_num, strides=opt.stride,
+    loss = YOLOXLoss(opt.label_name, reid_dim=opt.reid_dim, id_nums=opt.tracking_id_nums, strides=opt.stride,
                      in_channels=in_channel)
     # define network
     model = YOLOX(opt, backbone=backbone, neck=neck, head=head, loss=loss)
@@ -71,8 +71,8 @@ class YOLOX(nn.Module):
 
         if return_pred:
             assert ratio is not None
-            predicts = yolo_post_process(yolo_outputs, self.opt.stride, self.opt.num_classes, vis_thresh,
-                                         self.opt.nms_thresh, self.opt.label_name, ratio)
+            predicts = yolox_post_process(yolo_outputs, self.opt.stride, self.opt.num_classes, vis_thresh,
+                                          self.opt.nms_thresh, self.opt.label_name, ratio)
         if return_loss:
             return predicts, loss
         else:

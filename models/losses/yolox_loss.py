@@ -12,11 +12,12 @@ import torch.nn.functional as F
 
 
 class YOLOXLoss(nn.Module):
-    def __init__(self, num_classes, reid_dim=0, id_num=None, strides=[8, 16, 32], in_channels=[256, 512, 1024]):
+    def __init__(self, label_name, reid_dim=0, id_nums=None, strides=[8, 16, 32], in_channels=[256, 512, 1024]):
         super().__init__()
 
         self.n_anchors = 1
-        self.num_classes = num_classes
+        self.label_name = label_name
+        self.num_classes = len(self.label_name)
         self.strides = strides
         self.reid_dim = reid_dim
 
@@ -28,13 +29,21 @@ class YOLOXLoss(nn.Module):
         self.expanded_strides = [None] * len(in_channels)
 
         if self.reid_dim > 0:
-            assert id_num is not None
-            self.nID = id_num
-            self.classifier = nn.Linear(self.reid_dim, self.nID)
-            self.IDLoss = nn.CrossEntropyLoss(ignore_index=-1)
-            self.emb_scale = np.math.sqrt(2) * np.math.log(self.nID - 1)
-            self.s_det = nn.Parameter(-1.85 * torch.ones(1), requires_grad=False)
-            self.s_id = nn.Parameter(-1.05 * torch.ones(1), requires_grad=False)
+            assert id_nums is not None, "opt.tracking_id_nums shouldn't be None when reid_dim > 0"
+            assert len(id_nums) == self.num_classes, "num_classes={}, which is not the same as id_nums's length {}" \
+                                                     "".format(self.num_classes, len(id_nums))
+            # scale_trainable = True
+            # self.s_det = nn.Parameter(-1.85 * torch.ones(1), requires_grad=scale_trainable)
+            # self.s_id = nn.Parameter(-1.05 * torch.ones(1), requires_grad=scale_trainable)
+
+            self.reid_loss = nn.CrossEntropyLoss(ignore_index=-1)
+            self.classifiers = nn.ModuleList()
+            self.emb_scales = []
+            for idx, (label, id_num) in enumerate(zip(self.label_name, id_nums)):
+                print("{}, tracking label name: '{}', tracking_id number: {}, feat dim: {}".format(idx, label, id_num,
+                                                                                                   self.reid_dim))
+                self.emb_scales.append(np.math.sqrt(2) * np.math.log(id_num - 1))
+                self.classifiers.append(nn.Linear(self.reid_dim, id_num))
 
     def forward(self, preds, targets, imgs=None):
         outputs, origin_preds, x_shifts, y_shifts, expanded_strides = [], [], [], [], []
@@ -55,14 +64,18 @@ class YOLOXLoss(nn.Module):
                 origin_preds.append(reg_output.clone())
 
         outputs = torch.cat(outputs, 1)
-        total_loss, iou_loss, conf_loss, cls_loss, l1_loss, num_fg = self.get_losses(imgs, x_shifts, y_shifts,
-                                                                                     expanded_strides, targets,
-                                                                                     outputs, origin_preds,
-                                                                                     dtype=preds[0].dtype)
+        total_loss, iou_loss, conf_loss, cls_loss, l1_loss, reid_loss, num_fg = self.get_losses(imgs, x_shifts,
+                                                                                                y_shifts,
+                                                                                                expanded_strides,
+                                                                                                targets, outputs,
+                                                                                                origin_preds,
+                                                                                                dtype=preds[0].dtype)
 
         losses = {"loss": total_loss, "conf_loss": conf_loss, "cls_loss": cls_loss, "iou_loss": iou_loss}
         if self.use_l1:
             losses.update({"l1_loss": l1_loss})
+        if self.reid_dim > 0:
+            losses.update({"reid_loss": reid_loss})
         losses.update({"num_fg": num_fg})
         return losses
 
@@ -83,20 +96,14 @@ class YOLOXLoss(nn.Module):
         return pred, grid
 
     def get_losses(self, imgs, x_shifts, y_shifts, expanded_strides, targets, outputs, origin_preds, dtype):
-        bbox_preds = outputs[:, :, :4]  # [batch, n_anchors_all, 4]
-        obj_preds = outputs[:, :, 4].unsqueeze(-1)  # [batch, n_anchors_all, 1]
-        cls_preds = outputs[:, :, 5:self.num_classes+5]  # [batch, n_anchors_all, n_cls]
-
+        bbox_preds = outputs[:, :, :4]  # [batch, h*w, 4]
+        obj_preds = outputs[:, :, 4].unsqueeze(-1)  # [batch, h*w, 1]
+        cls_preds = outputs[:, :, 5:self.num_classes + 5]  # [batch, h*w, n_cls]
         if self.reid_dim > 0:
-            reid_preds = outputs[:, :, self.num_classes+5:]
+            reid_preds = outputs[:, :, self.num_classes + 5:]  # [batch, h*w, 128]
 
-        # calculate targets
-        mixup = targets.shape[2] > 5
-        if mixup:
-            label_cut = targets[..., :5]
-        else:
-            label_cut = targets
-        nlabel = (label_cut.sum(dim=2) > 0).sum(dim=1)  # number of objects
+        assert targets.shape[2] == 6 if self.reid_dim > 0 else 5
+        nlabel = (targets.sum(dim=2) > 0).sum(dim=1)  # number of objects
 
         total_num_anchors = outputs.shape[1]
         x_shifts = torch.cat(x_shifts, 1)  # [1, n_anchors_all]
@@ -127,9 +134,9 @@ class YOLOXLoss(nn.Module):
             else:
                 gt_classes = targets[batch_idx, :num_gt, 0]
                 gt_bboxes_per_image = targets[batch_idx, :num_gt, 1:5]
-                bboxes_preds_per_image = bbox_preds[batch_idx]
                 if self.reid_dim > 0:
                     gt_tracking_id = targets[batch_idx, :num_gt, 5]
+                bboxes_preds_per_image = bbox_preds[batch_idx, :, :]
 
                 try:
                     gt_matched_classes, fg_mask, pred_ious_this_matching, matched_gt_inds, num_fg_img = self.get_assignments(
@@ -162,7 +169,7 @@ class YOLOXLoss(nn.Module):
                 reg_target = gt_bboxes_per_image[matched_gt_inds]
 
                 if self.reid_dim > 0:
-                    reid_target = gt_tracking_id[fg_mask]
+                    reid_target = gt_tracking_id[matched_gt_inds]
 
                 if self.use_l1:
                     l1_target = self.get_l1_target(
@@ -189,23 +196,32 @@ class YOLOXLoss(nn.Module):
         if self.use_l1:
             l1_targets = torch.cat(l1_targets, 0)
         if self.reid_dim > 0:
-            reid_targets = torch.cat(reid_targets, 0)
+            reid_targets = torch.cat(reid_targets, 0).type(torch.int64)
 
         num_fg = max(num_fg, 1)
         loss_iou = (self.iou_loss(bbox_preds.view(-1, 4)[fg_masks], reg_targets)).sum() / num_fg
         loss_obj = (self.bcewithlog_loss(obj_preds.view(-1, 1), obj_targets)).sum() / num_fg
         loss_cls = (self.bcewithlog_loss(cls_preds.view(-1, self.num_classes)[fg_masks], cls_targets)).sum() / num_fg
         loss_l1 = (self.l1_loss(origin_preds.view(-1, 4)[fg_masks], l1_targets)).sum() / num_fg if self.use_l1 else 0.
+
+        reid_loss = 0.
         if self.reid_dim > 0:
             reid_feat = reid_preds.view(-1, self.reid_dim)[fg_masks]
-            reid_feat = self.emb_scale * F.normalize(reid_feat)
-            reid_output = self.classifier(reid_feat)
-            reid_loss = self.IDLoss(reid_output, reid_targets)
+            cls_label_targets = cls_targets.max(1)[1]
+            for cls in range(self.num_classes):
+                inds = torch.where(cls == cls_label_targets)
+                if inds[0].shape[0] == 0:
+                    continue
+                this_cls_tracking_id = reid_targets[inds]
+                this_cls_reid_feat = self.emb_scales[cls] * F.normalize(reid_feat[inds])
+
+                reid_output = self.classifiers[cls](this_cls_reid_feat)
+                reid_loss += self.reid_loss(reid_output, this_cls_tracking_id)
 
         reg_weight = 5.0
-        loss = reg_weight * loss_iou + loss_obj + loss_cls + loss_l1
+        loss = reg_weight * loss_iou + loss_obj + loss_cls + loss_l1 + reid_loss
 
-        return loss, reg_weight * loss_iou, loss_obj, loss_cls, loss_l1, num_fg / max(num_gts, 1)
+        return loss, reg_weight * loss_iou, loss_obj, loss_cls, loss_l1, reid_loss, num_fg / max(num_gts, 1)
 
     def get_l1_target(self, l1_target, gt, stride, x_shifts, y_shifts, eps=1e-8):
         l1_target[:, 0] = gt[:, 0] / stride - x_shifts
@@ -230,9 +246,8 @@ class YOLOXLoss(nn.Module):
             x_shifts = x_shifts.cpu()
             y_shifts = y_shifts.cpu()
 
-        fg_mask, is_in_boxes_and_center = self.get_in_boxes_info(
-            gt_bboxes_per_image, expanded_strides, x_shifts, y_shifts, total_num_anchors, num_gt,
-        )
+        fg_mask, is_in_boxes_and_center = self.get_in_boxes_info(gt_bboxes_per_image, expanded_strides, x_shifts,
+                                                                 y_shifts, total_num_anchors, num_gt)
 
         bboxes_preds_per_image = bboxes_preds_per_image[fg_mask]
         cls_preds_ = cls_preds[batch_idx][fg_mask]
@@ -244,7 +259,6 @@ class YOLOXLoss(nn.Module):
             bboxes_preds_per_image = bboxes_preds_per_image.cpu()
 
         pair_wise_ious = bboxes_iou(gt_bboxes_per_image, bboxes_preds_per_image, False)
-
         gt_cls_per_image = (
             F.one_hot(gt_classes.to(torch.int64), self.num_classes).float().unsqueeze(1).repeat(1, num_in_boxes_anchor,
                                                                                                 1))
@@ -253,17 +267,12 @@ class YOLOXLoss(nn.Module):
         if mode == "cpu":
             cls_preds_, obj_preds_ = cls_preds_.cpu(), obj_preds_.cpu()
 
-        cls_preds_ = (
-                cls_preds_.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
-                * obj_preds_.unsqueeze(0).repeat(num_gt, 1, 1).sigmoid_()
-        )
-        pair_wise_cls_loss = F.binary_cross_entropy(
-            cls_preds_.sqrt_(), gt_cls_per_image, reduction="none"
-        ).sum(-1)
+        cls_preds_ = (cls_preds_.float().unsqueeze(0).repeat(num_gt, 1, 1).sigmoid() * obj_preds_.unsqueeze(0).repeat(
+            num_gt, 1, 1).sigmoid())
+        pair_wise_cls_loss = F.binary_cross_entropy(cls_preds_.sqrt(), gt_cls_per_image, reduction="none").sum(-1)
         del cls_preds_
 
         cost = (pair_wise_cls_loss + 3.0 * pair_wise_ious_loss + 100000.0 * (~is_in_boxes_and_center))
-
         num_fg, gt_matched_classes, pred_ious_this_matching, matched_gt_inds = self.dynamic_k_matching(cost,
                                                                                                        pair_wise_ious,
                                                                                                        gt_classes,
@@ -283,35 +292,19 @@ class YOLOXLoss(nn.Module):
         x_shifts_per_image = x_shifts[0] * expanded_strides_per_image
         y_shifts_per_image = y_shifts[0] * expanded_strides_per_image
         x_centers_per_image = (
-            (x_shifts_per_image + 0.5 * expanded_strides_per_image)
-                .unsqueeze(0)
-                .repeat(num_gt, 1)
+            (x_shifts_per_image + 0.5 * expanded_strides_per_image).unsqueeze(0).repeat(num_gt, 1)
         )  # [n_anchor] -> [n_gt, n_anchor]
-        y_centers_per_image = (
-            (y_shifts_per_image + 0.5 * expanded_strides_per_image)
-                .unsqueeze(0)
-                .repeat(num_gt, 1)
-        )
+        y_centers_per_image = ((y_shifts_per_image + 0.5 * expanded_strides_per_image).unsqueeze(0).repeat(num_gt, 1))
 
         gt_bboxes_per_image_l = (
-            (gt_bboxes_per_image[:, 0] - 0.5 * gt_bboxes_per_image[:, 2])
-                .unsqueeze(1)
-                .repeat(1, total_num_anchors)
-        )
+            (gt_bboxes_per_image[:, 0] - 0.5 * gt_bboxes_per_image[:, 2]).unsqueeze(1).repeat(1, total_num_anchors))
         gt_bboxes_per_image_r = (
-            (gt_bboxes_per_image[:, 0] + 0.5 * gt_bboxes_per_image[:, 2])
-                .unsqueeze(1)
-                .repeat(1, total_num_anchors)
-        )
+            (gt_bboxes_per_image[:, 0] + 0.5 * gt_bboxes_per_image[:, 2]).unsqueeze(1).repeat(1, total_num_anchors))
         gt_bboxes_per_image_t = (
-            (gt_bboxes_per_image[:, 1] - 0.5 * gt_bboxes_per_image[:, 3])
-                .unsqueeze(1)
-                .repeat(1, total_num_anchors)
+            (gt_bboxes_per_image[:, 1] - 0.5 * gt_bboxes_per_image[:, 3]).unsqueeze(1).repeat(1, total_num_anchors)
         )
         gt_bboxes_per_image_b = (
-            (gt_bboxes_per_image[:, 1] + 0.5 * gt_bboxes_per_image[:, 3])
-                .unsqueeze(1)
-                .repeat(1, total_num_anchors)
+            (gt_bboxes_per_image[:, 1] + 0.5 * gt_bboxes_per_image[:, 3]).unsqueeze(1).repeat(1, total_num_anchors)
         )
 
         b_l = x_centers_per_image - gt_bboxes_per_image_l
@@ -326,18 +319,14 @@ class YOLOXLoss(nn.Module):
 
         center_radius = 2.5
 
-        gt_bboxes_per_image_l = (gt_bboxes_per_image[:, 0]).unsqueeze(1).repeat(
-            1, total_num_anchors
-        ) - center_radius * expanded_strides_per_image.unsqueeze(0)
-        gt_bboxes_per_image_r = (gt_bboxes_per_image[:, 0]).unsqueeze(1).repeat(
-            1, total_num_anchors
-        ) + center_radius * expanded_strides_per_image.unsqueeze(0)
-        gt_bboxes_per_image_t = (gt_bboxes_per_image[:, 1]).unsqueeze(1).repeat(
-            1, total_num_anchors
-        ) - center_radius * expanded_strides_per_image.unsqueeze(0)
-        gt_bboxes_per_image_b = (gt_bboxes_per_image[:, 1]).unsqueeze(1).repeat(
-            1, total_num_anchors
-        ) + center_radius * expanded_strides_per_image.unsqueeze(0)
+        gt_bboxes_per_image_l = (gt_bboxes_per_image[:, 0]).unsqueeze(1).repeat(1, total_num_anchors) - \
+                                center_radius * expanded_strides_per_image.unsqueeze(0)
+        gt_bboxes_per_image_r = (gt_bboxes_per_image[:, 0]).unsqueeze(1).repeat(1, total_num_anchors) + \
+                                center_radius * expanded_strides_per_image.unsqueeze(0)
+        gt_bboxes_per_image_t = (gt_bboxes_per_image[:, 1]).unsqueeze(1).repeat(1, total_num_anchors) - \
+                                center_radius * expanded_strides_per_image.unsqueeze(0)
+        gt_bboxes_per_image_b = (gt_bboxes_per_image[:, 1]).unsqueeze(1).repeat(1, total_num_anchors) + \
+                                center_radius * expanded_strides_per_image.unsqueeze(0)
 
         c_l = x_centers_per_image - gt_bboxes_per_image_l
         c_r = gt_bboxes_per_image_r - x_centers_per_image
@@ -350,9 +339,7 @@ class YOLOXLoss(nn.Module):
         # in boxes and in centers
         is_in_boxes_anchor = is_in_boxes_all | is_in_centers_all
 
-        is_in_boxes_and_center = (
-                is_in_boxes[:, is_in_boxes_anchor] & is_in_centers[:, is_in_boxes_anchor]
-        )
+        is_in_boxes_and_center = (is_in_boxes[:, is_in_boxes_anchor] & is_in_centers[:, is_in_boxes_anchor])
         return is_in_boxes_anchor, is_in_boxes_and_center
 
     def dynamic_k_matching(self, cost, pair_wise_ious, gt_classes, num_gt, fg_mask):
@@ -365,9 +352,7 @@ class YOLOXLoss(nn.Module):
         topk_ious, _ = torch.topk(ious_in_boxes_matrix, n_candidate_k, dim=1)
         dynamic_ks = torch.clamp(topk_ious.sum(1).int(), min=1)
         for gt_idx in range(num_gt):
-            _, pos_idx = torch.topk(
-                cost[gt_idx], k=dynamic_ks[gt_idx].item(), largest=False
-            )
+            _, pos_idx = torch.topk(cost[gt_idx], k=dynamic_ks[gt_idx].item(), largest=False)
             matching_matrix[gt_idx][pos_idx] = 1.0
 
         del topk_ious, dynamic_ks, pos_idx
@@ -399,14 +384,8 @@ def bboxes_iou(bboxes_a, bboxes_b, xyxy=True):
         area_a = torch.prod(bboxes_a[:, 2:] - bboxes_a[:, :2], 1)
         area_b = torch.prod(bboxes_b[:, 2:] - bboxes_b[:, :2], 1)
     else:
-        tl = torch.max(
-            (bboxes_a[:, None, :2] - bboxes_a[:, None, 2:] / 2),
-            (bboxes_b[:, :2] - bboxes_b[:, 2:] / 2),
-        )
-        br = torch.min(
-            (bboxes_a[:, None, :2] + bboxes_a[:, None, 2:] / 2),
-            (bboxes_b[:, :2] + bboxes_b[:, 2:] / 2),
-        )
+        tl = torch.max((bboxes_a[:, None, :2] - bboxes_a[:, None, 2:] / 2), (bboxes_b[:, :2] - bboxes_b[:, 2:] / 2))
+        br = torch.min((bboxes_a[:, None, :2] + bboxes_a[:, None, 2:] / 2), (bboxes_b[:, :2] + bboxes_b[:, 2:] / 2))
 
         area_a = torch.prod(bboxes_a[:, 2:], 1)
         area_b = torch.prod(bboxes_b[:, 2:], 1)
@@ -426,29 +405,21 @@ class IOUloss(nn.Module):
 
         pred = pred.view(-1, 4)
         target = target.view(-1, 4)
-        tl = torch.max(
-            (pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2)
-        )
-        br = torch.min(
-            (pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)
-        )
+        tl = torch.max((pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2))
+        br = torch.min((pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2))
 
         area_p = torch.prod(pred[:, 2:], 1)
         area_g = torch.prod(target[:, 2:], 1)
 
         en = (tl < br).type(tl.type()).prod(dim=1)
         area_i = torch.prod(br - tl, 1) * en
-        iou = (area_i) / (area_p + area_g - area_i + 1e-16)
+        iou = area_i / (area_p + area_g - area_i + 1e-16)
 
         if self.loss_type == "iou":
             loss = 1 - iou ** 2
         elif self.loss_type == "giou":
-            c_tl = torch.min(
-                (pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2)
-            )
-            c_br = torch.max(
-                (pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)
-            )
+            c_tl = torch.min((pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2))
+            c_br = torch.max((pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2))
             area_c = torch.prod(c_br - c_tl, 1)
             giou = iou - (area_c - area_i) / area_c.clamp(1e-16)
             loss = 1 - giou.clamp(min=-1.0, max=1.0)
@@ -459,3 +430,27 @@ class IOUloss(nn.Module):
             loss = loss.sum()
 
         return loss
+
+
+if __name__ == "__main__":
+    from config import opt
+
+    torch.manual_seed(opt.seed)
+    opt.reid_dim = 128  # 0
+    opt.batch_size = 2
+    dummy_input = [torch.rand([opt.batch_size, 85 + opt.reid_dim, i, i]) for i in [64, 32, 16]]
+    dummy_target = torch.rand([opt.batch_size, 3, 6 if opt.reid_dim > 0 else 5]) * 20  # [bs, max_obj_num, 6]
+    dummy_target[:, :, 0] = torch.randint(10, (opt.batch_size, 3), dtype=torch.int64)
+    if opt.reid_dim > 0:
+        dummy_target[:, :, 5] = torch.randint(20, (opt.batch_size, 3), dtype=torch.int64)
+        opt.tracking_id_nums = []
+        for dummy_id_num in range(50, len(opt.label_name) + 50):
+            opt.tracking_id_nums.append(dummy_id_num)
+
+    yolox_loss = YOLOXLoss(label_name=opt.label_name, reid_dim=opt.reid_dim, id_nums=opt.tracking_id_nums)
+    print('input shape:', [i.shape for i in dummy_input])
+    print("target shape:", dummy_target, dummy_target.shape)
+
+    loss_status = yolox_loss(dummy_input, dummy_target)
+    for l in loss_status:
+        print(l, loss_status[l])
