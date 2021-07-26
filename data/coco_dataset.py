@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # @Time    : 2021/7/21 20:42
 # @Author  : MingZhang
-# @Email   : zhangming210426@credithc.com
+# @Email   : zm19921120@126.com
 
 import cv2
 import numpy as np
