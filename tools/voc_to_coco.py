@@ -161,3 +161,4 @@ if __name__ == '__main__':
     convert(train_list, save_json_train, "convert train")
     print("-" * 100)
     convert(val_list, save_json_val, "convert val")
+    print("convert done\nyou can use 'python tools/show_coco_anns.py' to visualized the annotations")

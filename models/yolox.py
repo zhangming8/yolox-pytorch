@@ -4,6 +4,7 @@
 # @Email   : zm19921120@126.com
 
 import cv2
+import time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -54,15 +55,26 @@ class YOLOX(nn.Module):
         self.neck.init_weights()
         self.head.init_weights()
 
-    def forward(self, inputs, targets=None, return_loss=False, return_pred=True, vis_thresh=0.01, ratio=None):
+    def forward(self, inputs, targets=None, return_loss=False, return_pred=True, vis_thresh=0.01, ratio=None,
+                show_time=False):
         assert return_loss or return_pred
 
         loss, predicts = "", ""
         with torch.cuda.amp.autocast(enabled=self.opt.use_amp):
+            if show_time:
+                torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
+                s1 = time.time()
+
             body_feats = self.backbone(inputs)
             neck_feats = self.neck(body_feats)
             yolo_outputs = self.head(neck_feats)
             # print('yolo_outputs:', [i.dtype for i in yolo_outputs])  # float16 when use_amp=True
+
+            if show_time:
+                torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
+                s2 = time.time()
+                print("[inference] batch={} time: {}s".format(inputs.shape, s2 - s1))
+
             if return_loss:
                 assert targets is not None
                 loss = self.loss(yolo_outputs, targets)
@@ -71,8 +83,16 @@ class YOLOX(nn.Module):
 
         if return_pred:
             assert ratio is not None
+            if show_time:
+                torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
+                s3 = time.time()
+
             predicts = yolox_post_process(yolo_outputs, self.opt.stride, self.opt.num_classes, vis_thresh,
                                           self.opt.nms_thresh, self.opt.label_name, ratio)
+            if show_time:
+                torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
+                s4 = time.time()
+                print("[post_process] time: {}s".format(s4 - s3))
         if return_loss:
             return predicts, loss
         else:
@@ -115,13 +135,15 @@ class Detector(object):
         img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # padded square
         return img
 
-    def run(self, images, vis_thresh):
+    def run(self, images, vis_thresh, show_time=False):
         batch_img = True
         if np.ndim(images) == 3:
             images = [images]
             batch_img = False
 
         with torch.no_grad():
+            if show_time:
+                s1 = time.time()
             img_ratios = []
             inp_imgs = np.zeros([len(images), 3, self.opt.test_size[0], self.opt.test_size[1]], dtype=np.float32)
             for b_i, image in enumerate(images):
@@ -129,8 +151,10 @@ class Detector(object):
                 inp_imgs[b_i] = img
                 img_ratios.append(r)
 
+            if show_time:
+                print("[preprocess] time {}".format(time.time() - s1))
             inp_imgs = torch.from_numpy(inp_imgs).to(self.opt.device)
-            predicts = self.model(inp_imgs, vis_thresh=vis_thresh, ratio=img_ratios)
+            predicts = self.model(inp_imgs, vis_thresh=vis_thresh, ratio=img_ratios, show_time=show_time)
 
         if batch_img:
             return predicts

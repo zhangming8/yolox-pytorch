@@ -21,17 +21,19 @@ def update_nano_tiny(cfg):
 
 opt = EasyDict()
 
-opt.exp_id = "coco_CSPDarknet-s_640x640"
-opt.dataset_path = "/media/ming/DATA1/dataset/coco2017"
-# opt.dataset_path = r"D:\work\public_dataset\coco2017"
+opt.exp_id = "coco_CSPDarknet-s_640x640"  # experiment name, you can change it to any other name
+opt.dataset_path = "/media/ming/DATA1/dataset/coco2017"  # COCO detection
+# opt.dataset_path = r"D:\work\public_dataset\coco2017"  # Windows system
+# opt.dataset_path = "/media/ming/DATA1/dataset/VisDrone"  # MOT tracking
+# opt.dataset_path = r"D:\work\public_dataset\VisDrone"
 opt.backbone = "CSPDarknet-s"  # CSPDarknet-nano, CSPDarknet-tiny, CSPDarknet-s, CSPDarknet-m, l, x
 opt.input_size = (640, 640)
-opt.test_size = (640, 640)
-opt.gpus = "-1"  # "-1" "0,1,2,3,4,5,6,7"
+opt.test_size = (640, 640)  # evaluate size
+opt.gpus = "-1"  # "-1" "0,1,2,3,4,5,6,7" "0"
 opt.batch_size = 2
-opt.master_batch_size = -1  # batch size in first gpu
+opt.master_batch_size = -1  # batch size in first gpu. -1 means: master_batch_size=batch_size//len(gpus)
 opt.num_epochs = 300
-opt.random_size = (14, 26)  # None
+opt.random_size = (14, 26)  # None  # multi-size training: range(14, 26)*32
 opt.accumulate = 1  # real batch size = accumulate * batch_size
 
 # coco 80 classes
@@ -49,23 +51,27 @@ opt.label_name = [
     'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
     'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
     'scissors', 'teddy bear', 'hair drier', 'toothbrush']
-# opt.label_name = ['person']
-# TODO: support MOT(multi-object tracking) like FairMot/JDE when reid_dim > 0
-opt.reid_dim = 0  # 128
-opt.tracking_id_nums = None  # tracking id number in train dataset
 
-opt.warmup_lr = 0
+# TODO: support MOT(multi-object tracking) like FairMot/JDE when reid_dim > 0
+opt.reid_dim = 0  # 128  used in MOT, will add embedding branch if reid_dim>0
+# opt.label_name = ['pedestrian', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus',
+#                   'motor']
+# tracking id number of label_name in MOT train dataset
+opt.tracking_id_nums = None  # [1829, 853, 323, 3017, 295, 159, 215, 79, 55, 749]
+
+# base params
+opt.warmup_lr = 0  # start lr when warmup
 opt.basic_lr_per_img = 0.01 / 64.0
 opt.scheduler = "yoloxwarmcos"
-opt.no_aug_epochs = 15
+opt.no_aug_epochs = 15  # close mixup and mosaic augments in the last 15 epochs
 opt.min_lr_ratio = 0.05
 opt.weight_decay = 5e-4
 opt.warmup_epochs = 5
-opt.depth_wise = False
-opt.stride = [8, 16, 32]
+opt.depth_wise = False  # depth_wise conv is used in 'CSPDarknet-nano'
+opt.stride = [8, 16, 32]  # YOLOX down sample ratio: 8, 16, 32
 
 # train augments
-opt.degrees = 10.0
+opt.degrees = 10.0  # rotate angle
 opt.translate = 0.1
 opt.scale = (0.1, 2)
 opt.shear = 2.0
@@ -75,15 +81,15 @@ opt.seed = 0
 opt.data_num_workers = 0
 
 opt.momentum = 0.9
-opt.vis_thresh = 0.1  # inference confidence
+opt.vis_thresh = 0.3  # inference confidence, used in 'predict.py'
 opt.load_model = ''
-opt.ema = True  # False
-opt.grad_clip = dict(max_norm=35, norm_type=2)  # None
-opt.print_iter = 1
-opt.metric = "loss"  # 'Ap' or 'loss', slowly when set 'Ap'
-opt.val_intervals = 1
-opt.save_epoch = 1
-opt.resume = False  # resume from 'model_last.pth'
+opt.ema = True  # False, Exponential Moving Average
+opt.grad_clip = dict(max_norm=35, norm_type=2)  # None, clip gradient makes training more stable
+opt.print_iter = 1  # print loss every 1 iteration
+opt.metric = "loss"  # 'Ap' 'loss', a little slow when set 'Ap'
+opt.val_intervals = 1  # evaluate(when metric='Ap') and save best ckpt every 1 epoch
+opt.save_epoch = 1  # save check point every 1 epoch
+opt.resume = False  # resume from 'model_last.pth' when set True
 opt.use_amp = False  # True
 opt.cuda_benchmark = True
 opt.nms_thresh = 0.65
@@ -95,7 +101,7 @@ opt = merge_opt(opt, sys.argv[1:])
 if opt.backbone.lower().split("-")[1] in ["tiny", "nano"]:
     opt = update_nano_tiny(opt)
 
-# do not modify the flowing params
+# do not modify the following params
 opt.train_ann = opt.dataset_path + "/annotations/instances_train2017.json"
 opt.val_ann = opt.dataset_path + "/annotations/instances_val2017.json"
 opt.data_dir = opt.dataset_path + "/images"
@@ -118,3 +124,5 @@ if opt.resume and opt.load_model == '':
     opt.load_model = os.path.join(opt.save_dir, 'model_last.pth')
 if opt.random_size is not None:
     opt.cuda_benchmark = False
+if opt.reid_dim > 0:
+    assert opt.tracking_id_nums is not None

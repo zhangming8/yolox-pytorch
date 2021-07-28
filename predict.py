@@ -18,16 +18,17 @@ def detect():
     output = "output"
     mkdir(output, rm=True)
 
-    detector = Detector(opt)
-
     img_list = get_img_path(img_dir, extend=".jpg")
+    assert len(img_list) != 0, "cannot find img in {}".format(img_dir)
+
+    detector = Detector(opt)
     for index, image_path in enumerate(tqdm.tqdm(img_list)):
         print("------------------------------")
         print("{}/{}, {}".format(index, len(img_list), image_path))
 
         img = cv2.imread(image_path)
         s1 = time.time()
-        results = detector.run(img, vis_thresh=opt.vis_thresh)
+        results = detector.run(img, vis_thresh=opt.vis_thresh, show_time=True)
         print("[pre_process + inference + post_process] time cost: {}s".format(time.time() - s1))
         print(results)
 

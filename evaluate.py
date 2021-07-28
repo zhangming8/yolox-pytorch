@@ -39,7 +39,7 @@ def evaluate():
             cls, conf, bbox = res[0], res[1], res[2]
             if len(res) > 3:
                 reid_feat = res[4]
-            cls_index = opt.class_name.index(cls)
+            cls_index = opt.label_name.index(cls)
             coco_res.append(
                 {'bbox': [bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]],
                  'category_id': class_ids[cls_index],

@@ -30,7 +30,7 @@ class YOLOXLoss(nn.Module):
 
         if self.reid_dim > 0:
             assert id_nums is not None, "opt.tracking_id_nums shouldn't be None when reid_dim > 0"
-            assert len(id_nums) == self.num_classes, "num_classes={}, which is not the same as id_nums's length {}" \
+            assert len(id_nums) == self.num_classes, "num_classes={}, which is different from id_nums's length {}" \
                                                      "".format(self.num_classes, len(id_nums))
             # scale_trainable = True
             # self.s_det = nn.Parameter(-1.85 * torch.ones(1), requires_grad=scale_trainable)
@@ -130,6 +130,7 @@ class YOLOXLoss(nn.Module):
                 reg_target = outputs.new_zeros((0, 4))
                 l1_target = outputs.new_zeros((0, 4))
                 obj_target = outputs.new_zeros((total_num_anchors, 1))
+                reid_target = outputs.new_zeros((0, 1))
                 fg_mask = outputs.new_zeros(total_num_anchors).bool()
             else:
                 gt_classes = targets[batch_idx, :num_gt, 0]

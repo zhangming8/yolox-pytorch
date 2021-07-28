@@ -19,8 +19,8 @@ def yolox_post_process(outputs, down_strides, num_classes, conf_thre, nms_thre, 
         strides.append(torch.full((*shape, 1), stride))
 
     outputs = torch.cat([x.flatten(start_dim=2) for x in outputs], dim=2).permute(0, 2, 1)  # bs, all_anchor, 85(+128)
-    grids = torch.cat(grids, dim=1).type(outputs.dtype)
-    strides = torch.cat(strides, dim=1).type(outputs.dtype)
+    grids = torch.cat(grids, dim=1).type(outputs.dtype).to(outputs.device)
+    strides = torch.cat(strides, dim=1).type(outputs.dtype).to(outputs.device)
 
     # x, y
     outputs[..., 0:2] = (outputs[..., 0:2] + grids) * strides

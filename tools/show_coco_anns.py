@@ -19,8 +19,8 @@ def x1y1wh_x1y1x2y2(box):
 
 
 def vis_coco_anns(data):
-    gt_ann = opt.dataset_path + "/annotations/instances_{}.json".format(data)
-    img_dir = opt.dataset_path + "/images/" + data
+    gt_ann = dataset_path + "/annotations/instances_{}.json".format(data)
+    img_dir = dataset_path + "/images/" + data
 
     assert os.path.isfile(gt_ann), 'cannot find gt {}'.format(gt_ann)
     coco = coco_.COCO(gt_ann)
@@ -47,18 +47,26 @@ def vis_coco_anns(data):
         for ann in anns:
             area = ann["area"]
             is_crowd = ann["iscrowd"]
-            bbox = ann["bbox"]
+            bbox = [int(i) for i in ann["bbox"]]
             bbox = x1y1wh_x1y1x2y2(bbox)
             category_id = ann["category_id"]
+            tracking_id = ann.get("tracking_id", None)
             label_index = class_ids.index(category_id)
             label = classes[label_index]
             # print("label {}, is_crowd {}".format(label, is_crowd))
 
             # draw bounding box
             color = label_color[label_index]
-            cv2.rectangle(img, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
-            cv2.putText(img, label, (int(bbox[0]), int(bbox[1])), cv2.FONT_HERSHEY_COMPLEX, 1, color)
-            cv2.circle(img, ((int(bbox[0]) + int(bbox[2])) // 2, (int(bbox[1]) + int(bbox[3])) // 2), 4, color, -1)
+            # show box
+            cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), color, 2)
+            # show label and conf
+            txt = '{}-{}'.format(label, tracking_id) if tracking_id is not None else '{}'.format(label)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            txt_size = cv2.getTextSize(txt, font, 0.5, 2)[0]
+            cv2.rectangle(img, (bbox[0], bbox[1] - txt_size[1] - 2), (bbox[0] + txt_size[0], bbox[1] - 2), color,
+                          -1)
+            cv2.putText(img, txt, (bbox[0], bbox[1] - 2), font, 0.5, (255, 255, 255), thickness=1,
+                        lineType=cv2.LINE_AA)
 
         cv2.namedWindow("img", 0)
         cv2.imshow("img", img)
@@ -68,5 +76,6 @@ def vis_coco_anns(data):
 
 
 if __name__ == "__main__":
+    dataset_path = opt.dataset_path
     vis_coco_anns('train2017')
     # vis_coco_anns('val2017')
