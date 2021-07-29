@@ -54,6 +54,16 @@ def evaluate():
     coco_eval.evaluate()
     coco_eval.accumulate()
     coco_eval.summarize()
+
+    # Each class is evaluated separately
+    # classes = [c["name"] for c in coco.loadCats(coco.getCatIds())]
+    # for i, cat_id in enumerate(class_ids):
+    #     print('-------- evaluate class: {} --------'.format(classes[i]))
+    #     coco_eval.params.catIds = cat_id
+    #     coco_eval.evaluate()
+    #     coco_eval.accumulate()
+    #     coco_eval.summarize()
+
     os.remove(result_file)
 
 
