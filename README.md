@@ -1,13 +1,35 @@
-## a Pytorch easy re-implement of "YOLOX: Exceeding YOLO Series in 2021"
+## A pytorch easy re-implement of "YOLOX: Exceeding YOLO Series in 2021"
 
 ## 1. Notes
-    1. this is a Pytorch easy re-implement of "YOLOX: Exceeding YOLO Series in 2021"
-    2. the repo is still under development
+    This is a pytorch easy re-implement of "YOLOX: Exceeding YOLO Series in 2021" [https://arxiv.org/abs/2107.08430]
+    The repo is still under development
 
 ## 2. Environment
     pytorch>=1.7.0, python>=3.6, Ubuntu/Windows, see more in 'requirements.txt'
+    
+    cd /path/to/your/work
+    git clone https://github.com/zhangming8/yolox-pytorch.git
+    cd yolox-pytorch
+    download pre-train weights in MOdel Zoo to /path/to/your/work/weights
 
 ## 3. Object Detection
+
+#### Model Zoo
+
+All weights can be downloaded from [GoogleDrive](https://drive.google.com/drive/folders/1qEMLzikH5JwRNRoHpeCa6BJBeSQ6xXCH?usp=sharing) or [BaiduDrive](https://pan.baidu.com/s/1UsbdnyVwRJhr9Vy1tmJLeQ)(code:bc72)
+
+|Model      |test size  |mAP<sup>val<br>0.5:0.95 |mAP<sup>test<br>0.5:0.95 | Params<br>(M) |
+| ------    |:---:      |:---:                   | :---:                   |:---:          |
+|yolox-nano |416        |25.4                    |25.7                     |0.91           |
+|yolox-tiny |416        |31.8                    |31.9                     |5.06           |
+|yolox-s    |640        |39.3                    |39.6                     |9.0            |
+|yolox-m    |640        |46.2                    |46.4                     |25.3           |
+|yolox-l    |640        |49.5                    |50.0                     |54.2           |
+|yolox-x    |640        |50.5                    |51.1                     |99.1           |
+|yolox-x    |800        |51.2                    |51.9                     |99.1           |
+
+The weights were converted from [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX). mAP was reevaluated on COCO val2017 and test2017, and some results are slightly better than the official implement. You can reproduce them by scripts in 'evaluate.sh'
+
 #### Dataset
     download COCO:
     http://images.cocodataset.org/zips/train2017.zip
@@ -23,13 +45,33 @@
     change opt.dataset_path = "/path/to/dataset" in 'config.py'
 
 #### Train
-    sh train.sh
+    
+    a. Train from scratch:(backbone="CSPDarknet-s" means using yolox-s, and you can change it to any other backbone, eg: CSPDarknet-nano, tiny, s, m, l, x)
+    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=False val_intervals=1 data_num_workers=8
+    
+    b. Finetune, download pre-trained weight on COCO and finetune on customer dataset:
+    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=False val_intervals=1 data_num_workers=8 load_model="../weights/yolox-s.pth" resume=False
+    
+    c. Resume, you can use 'resume=True' when your training is accidentally stopped:
+    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=False val_intervals=1 data_num_workers=8 load_model="exp/coco_CSPDarknet-s_640x640/model_last.pth" resume=True
+    
+    d. You can also change params in 'train.sh'(these params will replace opt.xxx in config.py) and use 'sh train.sh' to train
+    (if you want to close mulit-size training, change opt.random_size = (20, 21) in 'config.py')
     
 #### Evaluate
+    change 'load_model'='weight/path/to/evaluate.pth' and backbone='backbone-type' in 'evaluate.sh'
     sh evaluate.sh
     
+    
 #### Predict/Inference/Demo
-    sh predict.sh
+    
+    a. Predict images, change img_dir and load_model
+    python predict.py gpus='0' backbone="CSPDarknet-s" vis_thresh=0.3 load_model="exp/coco_CSPDarknet-s_640x640/model_best.pth" img_dir='/path/to/dataset/images/val2017'
+    
+    b. Predict video
+    python predict.py gpus='0' backbone="CSPDarknet-s" vis_thresh=0.3 load_model="exp/coco_CSPDarknet-s_640x640/model_best.pth" video_dir='/path/to/your/video.mp4'
+    
+    You can also change params in 'predict.sh', and use 'sh predict.sh'
 
 #### Train Customer Dataset(VOC format)
     
@@ -59,7 +101,7 @@
     DOING
 
 #### Multi-class MOT Dataset
-    DOING
+    DOING, not ready
     1. download and unzip VisDrone dataset http://aiskyeye.com/download/multi-object-tracking_2021
     
     2. put train and val dataset into:
@@ -84,7 +126,7 @@
 #### Predict/Inference/Demo
     DOING
 
-## 5. Reference
+## 5. Acknowledgement
     https://github.com/Megvii-BaseDetection/YOLOX
     https://github.com/PaddlePaddle/PaddleDetection
     https://github.com/open-mmlab/mmdetection

@@ -62,6 +62,15 @@ def get_dataloader(opt, no_aug=False):
     return train_loader, val_loader
 
 
+def memory_info():
+    import psutil
+
+    mem_total = psutil.virtual_memory().total / 1024 / 1024 / 1024
+    mem_used = psutil.virtual_memory().used / 1024 / 1024 / 1024
+    mem_percent = psutil.virtual_memory().percent
+    return mem_percent, mem_used, mem_total
+
+
 def vis_inputs(inputs, targets, opt):
     from utils.util import label_color
 
@@ -113,7 +122,8 @@ def run_epoch(data_iter, loader, total_iter, e, phase, opt):
         inps, targets, img_info, ind = batch
         print("------------ epoch {} batch {}/{} ---------------".format(e, batch_i, total_iter))
         print("batch img shape {}, target shape {}".format(inps.shape, targets.shape))
-        vis_inputs(inps, targets, opt)
+        if opt.show:
+            vis_inputs(inps, targets, opt)
         if batch_i == 0:
             print(ind)
 
@@ -134,8 +144,9 @@ def main():
     opt.input_size = (640, 640)
     opt.test_size = (640, 640)
     opt.batch_size = 2
-    opt.data_num_workers = 0
+    opt.data_num_workers = 0  # 0
     opt.reid_dim = 0  # 128
+    opt.show = True  # False
     print(opt)
     train_loader, val_loader = get_dataloader(opt, no_aug=False)
 

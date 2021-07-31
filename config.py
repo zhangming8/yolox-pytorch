@@ -22,18 +22,18 @@ def update_nano_tiny(cfg):
 opt = EasyDict()
 
 opt.exp_id = "coco_CSPDarknet-s_640x640"  # experiment name, you can change it to any other name
-opt.dataset_path = "/media/ming/DATA1/dataset/coco2017"  # COCO detection
+opt.dataset_path = "/data/dataset/coco_dataset"  # COCO detection
 # opt.dataset_path = r"D:\work\public_dataset\coco2017"  # Windows system
 # opt.dataset_path = "/media/ming/DATA1/dataset/VisDrone"  # MOT tracking
 # opt.dataset_path = r"D:\work\public_dataset\VisDrone"
 opt.backbone = "CSPDarknet-s"  # CSPDarknet-nano, CSPDarknet-tiny, CSPDarknet-s, CSPDarknet-m, l, x
 opt.input_size = (640, 640)
 opt.test_size = (640, 640)  # evaluate size
-opt.gpus = "-1"  # "-1" "0,1,2,3,4,5,6,7" "0"
-opt.batch_size = 2
+opt.gpus = "0"  # "-1" "0" "3,4,5" "0,1,2,3,4,5,6,7" # -1 for cpu
+opt.batch_size = 24
 opt.master_batch_size = -1  # batch size in first gpu. -1 means: master_batch_size=batch_size//len(gpus)
 opt.num_epochs = 300
-opt.random_size = (14, 26)  # None  # multi-size training: range(14, 26)*32
+opt.random_size = (14, 26)  # multi-size train: from 448 to 800, random sample an int value and *32 as input size
 opt.accumulate = 1  # real batch size = accumulate * batch_size
 
 # coco 80 classes
@@ -122,7 +122,7 @@ opt.root_dir = os.path.dirname(__file__)
 opt.save_dir = os.path.join(opt.root_dir, 'exp', opt.exp_id)
 if opt.resume and opt.load_model == '':
     opt.load_model = os.path.join(opt.save_dir, 'model_last.pth')
-if opt.random_size is not None:
+if opt.random_size[1] - opt.random_size[0] > 1:
     opt.cuda_benchmark = False
 if opt.reid_dim > 0:
     assert opt.tracking_id_nums is not None

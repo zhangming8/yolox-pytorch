@@ -65,7 +65,7 @@ def yolox_post_process(outputs, down_strides, num_classes, conf_thre, nms_thre, 
 
         for det in detections:
             x1, y1, x2, y2, obj_conf, class_conf, class_pred = det[0:7]
-            bbox = [int(x1), int(y1), int(x2), int(y2)]
+            bbox = [float(x1), float(y1), float(x2), float(y2)]
             conf = float(obj_conf * class_conf)
             label = label_name[int(class_pred)]
 

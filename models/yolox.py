@@ -55,7 +55,7 @@ class YOLOX(nn.Module):
         self.neck.init_weights()
         self.head.init_weights()
 
-    def forward(self, inputs, targets=None, return_loss=False, return_pred=True, vis_thresh=0.01, ratio=None,
+    def forward(self, inputs, targets=None, return_loss=False, return_pred=True, vis_thresh=0.001, ratio=None,
                 show_time=False):
         assert return_loss or return_pred
 
@@ -73,7 +73,7 @@ class YOLOX(nn.Module):
             if show_time:
                 torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
                 s2 = time.time()
-                print("[inference] batch={} time: {}s".format(inputs.shape, s2 - s1))
+                print("[inference] batch={} time: {}s".format("x".join([str(i) for i in inputs.shape]), s2 - s1))
 
             if return_loss:
                 assert targets is not None

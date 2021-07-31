@@ -60,8 +60,11 @@ def load_model(model, model_path, optimizer=None, scaler=None, resume=False):
             print("==>> Resumed optimizer")
             if scaler is not None:
                 if 'scaler' in checkpoint:
-                    scaler.load_state_dict(checkpoint['scaler'])
-                    print("==>> Resumed scaler")
+                    if checkpoint['scaler'] != {}:
+                        scaler.load_state_dict(checkpoint['scaler'])
+                        print("==>> Resumed scaler")
+                    else:
+                        print("Skip load scaler: '{}'")
                 else:
                     print('==>> No scaler in checkpoint.')
         else:
