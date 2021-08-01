@@ -10,7 +10,7 @@
     cd /path/to/your/work
     git clone https://github.com/zhangming8/yolox-pytorch.git
     cd yolox-pytorch
-    download pre-train weights in MOdel Zoo to /path/to/your/work/weights
+    download pre-train weights in Model Zoo to /path/to/your/work/weights
 
 ## 3. Object Detection
 
@@ -56,12 +56,13 @@ The weights were converted from [YOLOX](https://github.com/Megvii-BaseDetection/
     python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=False val_intervals=1 data_num_workers=8 load_model="exp/coco_CSPDarknet-s_640x640/model_last.pth" resume=True
     
     d. You can also change params in 'train.sh'(these params will replace opt.xxx in config.py) and use 'sh train.sh' to train
-    (if you want to close mulit-size training, change opt.random_size = (20, 21) in 'config.py')
+    (if you want to close mulit-size training, change opt.random_size = None or (20, 21) in 'config.py')
     
 #### Evaluate
+
+    The trained weights will be saved in './exp/your_exp_id/model_xx.pth'
     change 'load_model'='weight/path/to/evaluate.pth' and backbone='backbone-type' in 'evaluate.sh'
     sh evaluate.sh
-    
     
 #### Predict/Inference/Demo
     

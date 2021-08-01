@@ -128,7 +128,7 @@ def run_epoch(data_iter, loader, total_iter, e, phase, opt):
             print(ind)
 
         # random input
-        if phase == 'train' and batch_i % 2 == 0:
+        if phase == 'train' and opt.random_size is not None and batch_i % 2 == 0:
             tensor = torch.LongTensor(2)
             size_factor = opt.input_size[1] * 1. / opt.input_size[0]
             size = np.random.randint(*opt.random_size)
@@ -159,9 +159,7 @@ def main():
     data_iter = iter(loader)
     for e in range(100):
         # train_loader.dataset.enable_mixup = False
-        # train_loader.dataset.enable_mosaic = False
         # train_loader.close_mosaic()
-        # print(train_loader.batch_sampler.mosaic)
         run_epoch(data_iter, loader, total_iter, e, phase, opt)
 
 

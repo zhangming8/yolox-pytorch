@@ -117,7 +117,7 @@ def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, 
     return ret, results
 
 
-def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, start_epoch, accumulate):
+def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, start_epoch, accumulate, no_aug):
     best = 1e10 if opt.metric == "loss" else -1
     iter_per_train_epoch = len(train_loader)
     iter_per_val_epoch = len(val_loader)
@@ -130,9 +130,9 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
     ema = EMA(model) if opt.ema else None
 
     for epoch in range(start_epoch + 1, opt.num_epochs + 1):
-        if epoch == opt.num_epochs - opt.no_aug_epochs:
+        if epoch == opt.num_epochs - opt.no_aug_epochs or no_aug:
             logger.write("--->No mosaic aug now! epoch {}\n".format(epoch))
-            train_loader.dataset.enable_mosaic = False
+            train_loader.dataset.close_mosaic()
             if isinstance(model, torch.nn.DataParallel):
                 model.module.loss.use_l1 = True
             else:
@@ -222,7 +222,7 @@ def main():
     # DP
     opt.device = torch.device('cuda' if opt.gpus[0] >= 0 else 'cpu')
     model, optimizer = set_device(model, optimizer, opt)
-    train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, start_epoch, opt.accumulate)
+    train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, start_epoch, opt.accumulate, no_aug)
 
 
 if __name__ == "__main__":

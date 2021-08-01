@@ -46,6 +46,14 @@ def box_candidates(box1, box2, wh_thr=2, ar_thr=20, area_thr=0.2):
     )  # candidates
 
 
+def xyxy2cxcywh(bboxes):
+    bboxes[:, 2] = bboxes[:, 2] - bboxes[:, 0]
+    bboxes[:, 3] = bboxes[:, 3] - bboxes[:, 1]
+    bboxes[:, 0] = bboxes[:, 0] + bboxes[:, 2] * 0.5
+    bboxes[:, 1] = bboxes[:, 1] + bboxes[:, 3] * 0.5
+    return bboxes
+
+
 def random_perspective(
         img, targets=(), degrees=10, translate=0.1, scale=0.1, shear=10, perspective=0.0, border=(0, 0),
 ):
@@ -166,21 +174,22 @@ def preproc(image, input_size, mean, std, swap=(2, 0, 1)):
         padded_img = np.ones(input_size) * 114.0
     img = np.array(image)
     r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
-    resized_img = cv2.resize(img, (int(img.shape[1] * r), int(img.shape[0] * r)),
-                             interpolation=cv2.INTER_LINEAR).astype(np.float32)
+    resized_img = cv2.resize(
+        img,
+        (int(img.shape[1] * r), int(img.shape[0] * r)),
+        interpolation=cv2.INTER_LINEAR,
+    ).astype(np.float32)
     padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
-    image = padded_img
 
-    image = image.astype(np.float32)
-    image = image[:, :, ::-1]
-    image /= 255.0
+    padded_img = padded_img[:, :, ::-1]
+    padded_img /= 255.0
     if mean is not None:
-        image -= mean
+        padded_img -= mean
     if std is not None:
-        image /= std
-    image = image.transpose(swap)
-    image = np.ascontiguousarray(image, dtype=np.float32)
-    return image, r
+        padded_img /= std
+    padded_img = padded_img.transpose(swap)
+    padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
+    return padded_img, r
 
 
 class TrainTransform:
@@ -210,48 +219,30 @@ class TrainTransform:
         image_o = image.copy()
         targets_o = targets.copy()
         height_o, width_o, _ = image_o.shape
-
         boxes_o = targets_o[:, :4]
         labels_o = targets_o[:, 4]
         if self.tracking:
             tracking_id_o = targets_o[:, 5]
-
         # bbox_o: [xyxy] to [c_x,c_y,w,h]
-        b_x_o = (boxes_o[:, 2] + boxes_o[:, 0]) * 0.5
-        b_y_o = (boxes_o[:, 3] + boxes_o[:, 1]) * 0.5
-        b_w_o = (boxes_o[:, 2] - boxes_o[:, 0]) * 1.0
-        b_h_o = (boxes_o[:, 3] - boxes_o[:, 1]) * 1.0
-        boxes_o[:, 0] = b_x_o
-        boxes_o[:, 1] = b_y_o
-        boxes_o[:, 2] = b_w_o
-        boxes_o[:, 3] = b_h_o
+        boxes_o = xyxy2cxcywh(boxes_o)
 
         # color aug
         image_t = _distort(image) if self.augment else image
         # flip
         if self.augment:
             image_t, boxes = _mirror(image_t, boxes)
-
         height, width, _ = image_t.shape
         image_t, r_ = preproc(image_t, input_dim, self.means, self.std)
-        boxes = boxes.copy()
         # boxes [xyxy] 2 [cx,cy,w,h]
-        b_x = (boxes[:, 2] + boxes[:, 0]) * 0.5
-        b_y = (boxes[:, 3] + boxes[:, 1]) * 0.5
-        b_w = (boxes[:, 2] - boxes[:, 0]) * 1.0
-        b_h = (boxes[:, 3] - boxes[:, 1]) * 1.0
-        boxes[:, 0] = b_x
-        boxes[:, 1] = b_y
-        boxes[:, 2] = b_w
-        boxes[:, 3] = b_h
+        boxes = xyxy2cxcywh(boxes)
 
         boxes *= r_
 
         mask_b = np.minimum(boxes[:, 2], boxes[:, 3]) > 8
         boxes_t = boxes[mask_b]
-        labels_t = labels[mask_b].copy()
+        labels_t = labels[mask_b]
         if self.tracking:
-            tracking_id_t = tracking_id[mask_b].copy()
+            tracking_id_t = tracking_id[mask_b]
 
         if len(boxes_t) == 0:
             image_t, r_o = preproc(image_o, input_dim, self.means, self.std)
