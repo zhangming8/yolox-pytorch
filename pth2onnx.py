@@ -21,7 +21,7 @@ def convert(srcModel,strDstFile):
     model = get_model(opt)
     model= load_model(model,srcModel)
     #model(inp_imgs, vis_thresh=0.001, ratio=1, show_time=False)
-    torch.onnx._export(model, inp_imgs, strDstFile, verbose=True, opset_version=12 )
+    torch.onnx._export(model, inp_imgs, strDstFile, verbose=True, do_constant_folding=True, opset_version=12 )
     onnxmodel = onnx.load(strDstFile)
     onnx.checker.check_model(onnxmodel)
     onnx.helper.printable_graph(onnxmodel.graph)
