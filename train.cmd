@@ -1,3 +1,4 @@
+rem starting script for Windows.
 rem  train from scratch
 rem python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=False val_intervals=1 data_num_workers=8
 
