@@ -13,20 +13,22 @@ import torch
 import onnx 
 
 
-def convert(strDstFile):
+def convert(srcModel,strDstFile):
     
   
     inp_imgs = torch.randn(1, 3, 640, 640, device='cpu')
 
     model = get_model(opt)
-    model= load_model(model,opt.load_model)
+    model= load_model(model,srcModel)
     #model(inp_imgs, vis_thresh=0.001, ratio=1, show_time=False)
     torch.onnx._export(model, inp_imgs, strDstFile, verbose=True, opset_version=11)
     onnxmodel = onnx.load(strDstFile)
     onnx.checker.check_model(onnxmodel)
+    onnx.helper.printable_graph(onnxmodel.graph)
+
 if __name__ == "__main__":
     os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpus_str
     opt.load_model = opt.load_model if opt.load_model != "" else os.path.join(opt.save_dir, "model_best.pth")
     modelpath=opt.load_model.replace(".pth",".onnx")
-    convert(modelpath)
-    print("done, onnx path:",modelpath)
+    convert(opt.load_model,modelpath)
+    print("=========done, onnx path:{}============",modelpath)
