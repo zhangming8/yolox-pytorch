@@ -82,6 +82,8 @@ class YOLOX(nn.Module):
                 #     print(k, v, v.dtype)  # always float32
 
         if return_pred:
+            if ratio is None:
+                return yolo_outputs
             assert ratio is not None
             if show_time:
                 torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
