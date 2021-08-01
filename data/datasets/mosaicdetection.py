@@ -139,11 +139,12 @@ class MosaicDetection(Dataset):
 
         else:
             self._dataset._input_dim = self.input_dim
-            img, label, img_info, idx = self._dataset.pull_item(idx)
+            img, label, img_info, id_ = self._dataset.pull_item(idx)
             img, label = self.preproc(img, label, self.input_dim)
-            return img, label, img_info, int(idx)
+            return img, label, img_info, int(id_)
 
     def mixup(self, origin_img, origin_labels, input_dim):
+        # https://github.com/Megvii-BaseDetection/YOLOX/commit/d1e80118e1a6dd9fbde2e2c374f737997f117a59
         jit_factor = random.uniform(*self.mixup_scale)
         FLIP = random.uniform(0, 1) > 0.5
         cp_labels = []
@@ -163,7 +164,7 @@ class MosaicDetection(Dataset):
             interpolation=cv2.INTER_LINEAR,
         ).astype(np.float32)
         cp_img[
-        : int(img.shape[0] * cp_scale_ratio), : int(img.shape[1] * cp_scale_ratio)
+            : int(img.shape[0] * cp_scale_ratio), : int(img.shape[1] * cp_scale_ratio)
         ] = resized_img
         cp_img = cv2.resize(
             cp_img,
@@ -186,15 +187,15 @@ class MosaicDetection(Dataset):
         if padded_img.shape[1] > target_w:
             x_offset = random.randint(0, padded_img.shape[1] - target_w - 1)
         padded_cropped_img = padded_img[
-                             y_offset: y_offset + target_h, x_offset: x_offset + target_w
-                             ]
+            y_offset: y_offset + target_h, x_offset: x_offset + target_w
+        ]
 
         cp_bboxes_origin_np = adjust_box_anns(
-            cp_labels[:, :4], cp_scale_ratio, 0, 0, origin_w, origin_h
+            cp_labels[:, :4].copy(), cp_scale_ratio, 0, 0, origin_w, origin_h
         )
         if FLIP:
             cp_bboxes_origin_np[:, 0::2] = (
-                    origin_w - cp_bboxes_origin_np[:, 0::2][:, ::-1]
+                origin_w - cp_bboxes_origin_np[:, 0::2][:, ::-1]
             )
         cp_bboxes_transformed_np = cp_bboxes_origin_np.copy()
         cp_bboxes_transformed_np[:, 0::2] = np.clip(
@@ -206,10 +207,10 @@ class MosaicDetection(Dataset):
         keep_list = box_candidates(cp_bboxes_origin_np.T, cp_bboxes_transformed_np.T, 5)
 
         if keep_list.sum() >= 1.0:
-            cls_labels = cp_labels[keep_list, 4:5]
+            cls_labels = cp_labels[keep_list, 4:5].copy()
             box_labels = cp_bboxes_transformed_np[keep_list]
             if self.tracking:
-                tracking_id_labels = cp_labels[keep_list, 5:6]
+                tracking_id_labels = cp_labels[keep_list, 5:6].copy()
                 labels = np.hstack((box_labels, cls_labels, tracking_id_labels))
             else:
                 labels = np.hstack((box_labels, cls_labels))
@@ -217,7 +218,7 @@ class MosaicDetection(Dataset):
             origin_img = origin_img.astype(np.float32)
             origin_img = 0.5 * origin_img + 0.5 * padded_cropped_img.astype(np.float32)
 
-        return origin_img.astype(np.uint8), origin_labels
+        return origin_img, origin_labels
 
 
 def adjust_box_anns(bbox, scale_ratio, padw, padh, w_max, h_max):
