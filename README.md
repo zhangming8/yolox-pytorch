@@ -55,8 +55,10 @@ The weights were converted from [YOLOX](https://github.com/Megvii-BaseDetection/
     c. Resume, you can use 'resume=True' when your training is accidentally stopped:
     python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=False val_intervals=1 data_num_workers=8 load_model="exp/coco_CSPDarknet-s_640x640/model_last.pth" resume=True
     
-    d. You can also change params in 'train.sh'(these params will replace opt.xxx in config.py) and use 'sh train.sh' to train
-    (if you want to close mulit-size training, change opt.random_size = None or (20, 21) in 'config.py')
+    d. Some tips:
+    Ⅰ You can also change params in 'train.sh'(these params will replace opt.xxx in config.py) and use 'sh train.sh' to train
+    Ⅱ if you want to close mulit-size training, change opt.random_size = None or (20, 21) in 'config.py')
+    Ⅲ mulit-gpu train: change opt.gpus = "3,5,6,7"
     
 #### Evaluate
 

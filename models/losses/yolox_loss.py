@@ -26,7 +26,6 @@ class YOLOXLoss(nn.Module):
         self.bcewithlog_loss = nn.BCEWithLogitsLoss(reduction="none")
         self.iou_loss = IOUloss(reduction="none")
         self.grids = [torch.zeros(1)] * len(in_channels)
-        self.expanded_strides = [None] * len(in_channels)
 
         if self.reid_dim > 0:
             assert id_nums is not None, "opt.tracking_id_nums shouldn't be None when reid_dim > 0"
@@ -49,7 +48,7 @@ class YOLOXLoss(nn.Module):
         outputs, origin_preds, x_shifts, y_shifts, expanded_strides = [], [], [], [], []
 
         for k, (stride, p) in enumerate(zip(self.strides, preds)):
-            pred, grid = self.get_output_and_grid(p, k, stride, p.type())
+            pred, grid = self.get_output_and_grid(p, k, stride, p.dtype)
 
             outputs.append(pred)
             x_shifts.append(grid[:, :, 0])
@@ -80,12 +79,13 @@ class YOLOXLoss(nn.Module):
         return losses
 
     def get_output_and_grid(self, p, k, stride, dtype):
+        p = p.clone()
         grid = self.grids[k]
         batch_size, n_ch, hsize, wsize = p.shape
 
-        if grid.shape[2:4] != p.shape[2:4]:
+        if grid.shape[2:4] != p.shape[2:4] or grid.device != p.device:
             yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)])
-            grid = torch.stack((xv, yv), 2).view(1, 1, hsize, wsize, 2).type(dtype)
+            grid = torch.stack((xv, yv), 2).view(1, 1, hsize, wsize, 2).type(dtype).to(p.device)
             self.grids[k] = grid
 
         pred = p.view(batch_size, self.n_anchors, n_ch, hsize, wsize)
@@ -221,8 +221,8 @@ class YOLOXLoss(nn.Module):
 
         reg_weight = 5.0
         loss = reg_weight * loss_iou + loss_obj + loss_cls + loss_l1 + reid_loss
-
-        return loss, reg_weight * loss_iou, loss_obj, loss_cls, loss_l1, reid_loss, num_fg / max(num_gts, 1)
+        fg_r = torch.tensor(num_fg / max(num_gts, 1), device=outputs.device, dtype=dtype)
+        return loss, reg_weight * loss_iou, loss_obj, loss_cls, loss_l1, reid_loss, fg_r
 
     def get_l1_target(self, l1_target, gt, stride, x_shifts, y_shifts, eps=1e-8):
         l1_target[:, 0] = gt[:, 0] / stride - x_shifts
