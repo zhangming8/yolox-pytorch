@@ -108,6 +108,7 @@ opt.num_classes = len(opt.label_name)
 opt.gpus_str = opt.gpus
 opt.metric = opt.metric.lower()
 opt.gpus = [int(i) for i in opt.gpus.split(',')]
+opt.gpus = [i for i in range(len(opt.gpus))] if opt.gpus[0] >= 0 else [-1]
 if opt.master_batch_size == -1:
     opt.master_batch_size = opt.batch_size // len(opt.gpus)
 rest_batch_size = opt.batch_size - opt.master_batch_size
@@ -125,3 +126,4 @@ if opt.random_size is not None and (opt.random_size[1] - opt.random_size[0] > 1)
     opt.cuda_benchmark = False
 if opt.reid_dim > 0:
     assert opt.tracking_id_nums is not None
+os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus_str

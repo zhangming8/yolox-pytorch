@@ -14,13 +14,14 @@ from progress.bar import Bar
 import torch
 import torch.nn as nn
 
+from config import opt
 from data.coco_dataset import get_dataloader
 from models.yolox import get_model
 from utils.lr_scheduler import LRScheduler
 from utils.util import AverageMeter, write_log
 from utils.model_utils import EMA, save_model, load_model, ensure_same, clip_grads
 from utils.data_parallel import set_device
-from config import opt
+from utils.logger import Logger
 
 
 def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, num_iter, total_iter,
@@ -46,11 +47,12 @@ def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, 
         data_time.update(time.time() - end)
 
         # inference and call loss
-        return_pred = phase != 'train' and "ap" in opt.metric.lower()
-        img_ratio = [float(min(opt.test_size[0] / i[0], opt.test_size[1] / i[1])) for i in
-                     img_info] if return_pred else None
+        return_pred = phase != 'train' and "ap" in opt.metric and opt.val_intervals > 0 and epoch % opt.val_intervals == 0
+        img_ratio = [float(min(opt.test_size[0] / img_info[0][i], opt.test_size[1] / img_info[1][i])) for i in
+                     range(inps.shape[0])] if return_pred else None
         preds, loss_stats = model_with_loss(inps, targets=targets, return_loss=True, return_pred=return_pred,
-                                            ratio=img_ratio)
+                                            ratio=img_ratio, vis_thresh=0.01)
+        loss_stats = {k: v.mean() for k, v in loss_stats.items()}
         if phase == 'train':
             iteration = (epoch - 1) * num_iter + iter_id
             scaler.scale(loss_stats["loss"]).backward()
@@ -100,7 +102,7 @@ def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, 
             bar.next()
 
         # random resizing
-        if phase == 'train' and opt.random_size is not None and (iteration % 10 == 0 or iteration <= 10):
+        if phase == 'train' and opt.random_size is not None and (iteration % 10 == 0 or iteration <= 20):
             tensor = torch.LongTensor(2).to(device=opt.device)
             size_factor = opt.input_size[1] * 1. / opt.input_size[0]
             size = np.random.randint(*opt.random_size)
@@ -230,8 +232,6 @@ if __name__ == "__main__":
     np.random.seed(opt.seed)
     torch.manual_seed(opt.seed)
     torch.backends.cudnn.benchmark = opt.cuda_benchmark
-    os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus_str
-    from utils.logger import Logger
 
     logger = Logger(opt)
     shutil.copyfile("./config.py", logger.log_path + "/config.py")
