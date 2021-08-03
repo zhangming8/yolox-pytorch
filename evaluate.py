@@ -56,9 +56,11 @@ def evaluate():
 
     if "test" in os.path.basename(gt_ann):
         print("save result to {}, you can zip the result and upload it to COCO website"
-              "[https://competitions.codalab.org/competitions/20794#participate]".format(result_file))
+              "(https://competitions.codalab.org/competitions/20794#participate)".format(result_file))
         try:
-            os.system("zip {} {}".format(gt_ann.replace(".json", ".zip"), gt_ann))
+            zip_file = result_file.replace(".json", ".zip")
+            os.system("zip {} {}".format(zip_file, result_file))
+            print("create upload file done: {}".format(zip_file))
         except:
             print("please zip it before uploading")
         return
