@@ -21,7 +21,7 @@ All weights can be downloaded from [GoogleDrive](https://drive.google.com/drive/
 |Model      |test size  |mAP<sup>val<br>0.5:0.95 |mAP<sup>test<br>0.5:0.95 | Params<br>(M) |
 | ------    |:---:      |:---:                   | :---:                   |:---:          |
 |yolox-nano |416        |25.4                    |25.7                     |0.91           |
-|yolox-tiny |416        |31.8                    |31.9                     |5.06           |
+|yolox-tiny |416        |33.1                    |33.2                     |5.06           |
 |yolox-s    |640        |39.3                    |39.6                     |9.0            |
 |yolox-m    |640        |46.2                    |46.4                     |25.3           |
 |yolox-l    |640        |49.5                    |50.0                     |54.2           |
