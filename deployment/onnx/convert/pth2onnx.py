@@ -8,8 +8,8 @@ import cv2
 import pycocotools.coco as coco_
 
 import sys
-sys.path.append("../..")
-sys.path.extend([os.path.join(root, name) for root, dirs, _ in os.walk("../") for name in dirs])
+sys.path.append("../../..")
+sys.path.extend([os.path.join(root, name) for root, dirs, _ in os.walk("../../..") for name in dirs])
 from config import opt
 from models.yolox import load_model,get_model
 
