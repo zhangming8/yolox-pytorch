@@ -25,7 +25,7 @@ opt.exp_id = "coco_CSPDarknet-s_640x640"  # experiment name, you can change it t
 opt.dataset_path = "/data/dataset/coco_dataset"  # COCO detection
 # opt.dataset_path = r"D:\work\public_dataset\coco2017"  # Windows system
 # opt.dataset_path = "/media/ming/DATA1/dataset/VisDrone"  # MOT tracking
-opt.backbone = "CSPDarknet-s"  # CSPDarknet-nano, CSPDarknet-tiny, CSPDarknet-s, CSPDarknet-m, l, x
+opt.backbone = "CSPDarknet-nano"  # CSPDarknet-nano, CSPDarknet-tiny, CSPDarknet-s, CSPDarknet-m, l, x
 opt.input_size = (640, 640)
 opt.random_size = (14, 26)  # None; multi-size train: from 448 to 800, random sample an int value and *32 as input size
 opt.test_size = (640, 640)  # evaluate size
@@ -36,19 +36,7 @@ opt.num_epochs = 300
 
 # coco 80 classes
 opt.label_name = [
-    'person', 'bicycle', 'car', 'motorcycle', 'airplane',
-    'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
-    'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
-    'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
-    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
-    'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
-    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass',
-    'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
-    'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
-    'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv',
-    'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
-    'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
-    'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+   'redheader','stamp']
 
 # TODO: support MOT(multi-object tracking) like FairMot/JDE when reid_dim > 0
 opt.reid_dim = 0  # 128  used in MOT, will add embedding branch if reid_dim>0
