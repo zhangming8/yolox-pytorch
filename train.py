@@ -213,6 +213,8 @@ def main():
     no_aug = start_epoch >= opt.num_epochs - opt.no_aug_epochs
     train_loader, val_loader = get_dataloader(opt, no_aug=no_aug)
     dataset_label = val_loader.dataset.classes
+    if isinstance(opt.label_name,str):
+        opt.label_name=opt.label_name.split(",")
     assert opt.label_name == dataset_label, "[ERROR] 'opt.label_name' should be the same as dataset's {} != {}".format(
         opt.label_name, dataset_label)
     # learning ratio scheduler
