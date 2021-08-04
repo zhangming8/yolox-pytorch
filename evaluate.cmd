@@ -19,4 +19,5 @@ rem python evaluate.py gpus='0' backbone="CSPDarknet-x" load_model="../weights/y
 rem python evaluate.py gpus='0' backbone="CSPDarknet-x" load_model="../weights/yolox-x.pth" dataset_path="/data/dataset/coco_dataset" test_ann="/data/dataset/coco_dataset/annotations/image_info_test-dev2017.json" test_size="(800,800)"
 
 rem  evaluate customer dataset
-python evaluate.py gpus='0' backbone="CSPDarknet-s" load_model="exp/coco_CSPDarknet-s_640x640/model_best.pth"
+rem python evaluate.py gpus='0' backbone="CSPDarknet-s" load_model="exp/coco_CSPDarknet-s_640x640/model_best.pth"  dataset_path="D:\\coco_dataset"
+python evaluate.py gpus='0' backbone="CSPDarknet-nano" load_model="exp/coco_CSPDarknet-nano_640x640/model_best.pth" dataset_path="D:\\coco_dataset"
