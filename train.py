@@ -18,7 +18,7 @@ from config import opt
 from data.coco_dataset import get_dataloader
 from models.yolox import get_model
 from utils.lr_scheduler import LRScheduler
-from utils.util import AverageMeter, write_log
+from utils.util import AverageMeter, write_log, configure_module
 from utils.model_utils import EMA, save_model, load_model, ensure_same, clip_grads
 from utils.data_parallel import set_device
 from utils.logger import Logger
@@ -228,7 +228,7 @@ def main():
 
 
 if __name__ == "__main__":
-    cv2.setNumThreads(0)
+    configure_module()
     np.random.seed(opt.seed)
     torch.manual_seed(opt.seed)
     torch.backends.cudnn.benchmark = opt.cuda_benchmark
