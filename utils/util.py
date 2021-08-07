@@ -12,41 +12,46 @@ import torch
 
 def merge_opt(opt, params):
     if len(params):
-        print("inputs params:", params)
+        print("==>> input params:", params)
+    input_params = {}
     for arg in params:
-        assert "=" in arg, "inputs format should be: python xxx.py param1=value1 param2=value2"
+        assert "=" in arg, "input format should be: python xxx.py param1=value1 param2=value2"
         name, value = arg.split("=")
         try:
-            # string int, string float, string bool
+            # string int, string float, string bool, string list, string tuple
             value = eval(value)
         except:
             # string others
             pass
+        input_params[name] = value
+        value_type = str(type(value)).split("class ")[1].split(">")[0]
         if name in opt:
             if opt[name] != value:
-                print("[INFO] change param: {} {} to {} {}".format(name, opt[name], value, type(value)))
+                print("[INFO] change param: {} {} -> {} ({})".format(name, opt[name], value, value_type))
             else:
-                print("[INFO] same param: {}={}".format(name, value, type(value)))
+                print("[INFO] same param: {}={} ({})".format(name, value, value_type))
         else:
-            print("[INFO] add param: {}={} {} ".format(name, value, type(value)))
+            print("[INFO] add param: {}={} ({}) ".format(name, value, value_type))
         opt[name] = value
 
     def change_list_to_str(cfg, param):
         if param in cfg.keys():
             if isinstance(cfg[param], (list, tuple)):
                 new_value = ",".join([str(i) for i in cfg[param]])
-                print("[INFO] re-change param: {} {} to {} {} ".format(param, cfg[param], new_value, type(new_value)))
+                value_t = str(type(new_value)).split("class ")[1].split(">")[0]
+                print("[INFO] re-change param: {} {} to {} {} ".format(param, cfg[param], new_value, value_t))
                 cfg[param] = new_value
             elif isinstance(cfg[param], int):
                 new_value = str(cfg[param])
-                print("[INFO] re-change param: {} {} to {} {} ".format(param, cfg[param], new_value, type(new_value)))
+                value_t = str(type(new_value)).split("class ")[1].split(">")[0]
+                print("[INFO] re-change param: {} {} to {} {} ".format(param, cfg[param], new_value, value_t))
                 cfg[param] = new_value
 
         return cfg
 
     opt = change_list_to_str(opt, "gpus")
-    opt = change_list_to_str(opt, "lr_decay_epoch")
-    return opt
+    # opt = change_list_to_str(opt, "lr_decay_epoch")
+    return opt, input_params
 
 
 def configure_module(ulimit_value=8192):

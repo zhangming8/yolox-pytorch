@@ -9,12 +9,13 @@ from easydict import EasyDict
 from utils.util import merge_opt
 
 
-def update_nano_tiny(cfg):
-    cfg.scale = (0.5, 1.5)
-    cfg.test_size = (416, 416)
-    cfg.enable_mixup = False
-    if cfg.random_size is not None:
-        cfg.random_size = (10, 20)
+def update_nano_tiny(cfg, inp_params):
+    cfg.scale = cfg.scale if 'scale' in inp_params else (0.5, 1.5)
+    cfg.test_size = cfg.test_size if 'test_size' in inp_params else (416, 416)
+    cfg.enable_mixup = cfg.enable_mixup if 'enable_mixup' in inp_params else False
+    if 'random_size' not in inp_params:
+        if cfg.random_size is not None:
+            cfg.random_size = (10, 20)
     if 'nano' in cfg.backbone:
         cfg.depth_wise = True
     return cfg
@@ -97,14 +98,18 @@ opt.nms_thresh = 0.65
 opt.rgb_means = [0.485, 0.456, 0.406]
 opt.std = [0.229, 0.224, 0.225]
 
-opt = merge_opt(opt, sys.argv[1:])
+opt, input_params = merge_opt(opt, sys.argv[1:])
 if opt.backbone.lower().split("-")[1] in ["tiny", "nano"]:
-    opt = update_nano_tiny(opt)
+    opt = update_nano_tiny(opt, input_params)
 
 # do not modify the following params
 opt.train_ann = opt.dataset_path + "/annotations/instances_train2017.json"
 opt.val_ann = opt.dataset_path + "/annotations/instances_val2017.json"
 opt.data_dir = opt.dataset_path + "/images"
+if isinstance(opt.label_name, str):
+    new_label = opt.label_name.split(",")
+    print('[INFO] change param: {} {} -> {}'.format("label_name", opt.label_name, new_label))
+    opt.label_name = new_label
 opt.num_classes = len(opt.label_name)
 opt.gpus_str = opt.gpus
 opt.metric = opt.metric.lower()
@@ -127,4 +132,6 @@ if opt.random_size is not None and (opt.random_size[1] - opt.random_size[0] > 1)
     opt.cuda_benchmark = False
 if opt.reid_dim > 0:
     assert opt.tracking_id_nums is not None
+
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus_str
+print("\n{} final config: {}\n{}".format("-"*20, "-"*20, opt))

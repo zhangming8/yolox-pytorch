@@ -134,7 +134,7 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
     for epoch in range(start_epoch + 1, opt.num_epochs + 1):
         if epoch == opt.num_epochs - opt.no_aug_epochs or no_aug:
             logger.write("--->No mosaic aug now! epoch {}\n".format(epoch))
-            train_loader.dataset.close_mosaic()
+            train_loader.close_mosaic()
             if isinstance(model, torch.nn.DataParallel):
                 model.module.loss.use_l1 = True
             else:
@@ -213,8 +213,6 @@ def main():
     no_aug = start_epoch >= opt.num_epochs - opt.no_aug_epochs
     train_loader, val_loader = get_dataloader(opt, no_aug=no_aug)
     dataset_label = val_loader.dataset.classes
-    if isinstance(opt.label_name,str):
-        opt.label_name=opt.label_name.split(",")
     assert opt.label_name == dataset_label, "[ERROR] 'opt.label_name' should be the same as dataset's {} != {}".format(
         opt.label_name, dataset_label)
     # learning ratio scheduler
