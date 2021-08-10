@@ -16,7 +16,7 @@
 
 #### Model Zoo
 
-All weights can be downloaded from [GoogleDrive](https://drive.google.com/drive/folders/1qEMLzikH5JwRNRoHpeCa6BJBeSQ6xXCH?usp=sharing) or [BaiduDrive](https://pan.baidu.com/s/1UsbdnyVwRJhr9Vy1tmJLeQ)(code:bc72)
+All weights can be downloaded from [GoogleDrive](https://drive.google.com/drive/folders/1qEMLzikH5JwRNRoHpeCa6BJBeSQ6xXCH?usp=sharing) or [BaiduDrive](https://pan.baidu.com/s/1UsbdnyVwRJhr9Vy1tmJLeQ) (code:bc72)
 
 |Model      |test size  |mAP<sup>val<br>0.5:0.95 |mAP<sup>test<br>0.5:0.95 | Params<br>(M) |
 | ------    |:---:      |:---:                   | :---:                   |:---:          |
@@ -28,7 +28,7 @@ All weights can be downloaded from [GoogleDrive](https://drive.google.com/drive/
 |yolox-x    |640        |50.5                    |51.1                     |99.1           |
 |yolox-x    |800        |51.2                    |51.9                     |99.1           |
 
-The weights were converted from [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX). mAP was reevaluated on COCO val2017 and test2017, and some results are slightly better than the official implement. You can reproduce them by scripts in 'evaluate.sh'
+mAP was reevaluated on COCO val2017 and test2017, and some results are slightly better than the official implement [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX). You can reproduce them by scripts in 'evaluate.sh'
 
 #### Dataset
     download COCO:
@@ -45,24 +45,29 @@ The weights were converted from [YOLOX](https://github.com/Megvii-BaseDetection/
     change opt.dataset_path = "/path/to/dataset" in 'config.py'
 
 #### Train
-    
+    See more example in 'train.sh'
     a. Train from scratch:(backbone="CSPDarknet-s" means using yolox-s, and you can change it to any other backbone, eg: CSPDarknet-nano, tiny, s, m, l, x)
-    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=False val_intervals=1 data_num_workers=8
+    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 metric="ap" batch_size=48
     
     b. Finetune, download pre-trained weight on COCO and finetune on customer dataset:
-    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=False val_intervals=1 data_num_workers=8 load_model="../weights/yolox-s.pth" resume=False
+    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 metric="ap" batch_size=48 load_model="../weights/yolox-s.pth" resume=False
     
     c. Resume, you can use 'resume=True' when your training is accidentally stopped:
-    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=False val_intervals=1 data_num_workers=8 load_model="exp/coco_CSPDarknet-s_640x640/model_last.pth" resume=True
+    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 metric="ap" batch_size=48 load_model="exp/coco_CSPDarknet-s_640x640/model_last.pth" resume=True
     
     d. Some tips:
-    Ⅰ You can also change params in 'train.sh'(these params will replace opt.xxx in config.py) and use 'sh train.sh' to train
-    Ⅱ if you want to close mulit-size training, change opt.random_size = None or (20, 21) in 'config.py')
-    Ⅲ mulit-gpu train: change opt.gpus = "3,5,6,7"
+    Ⅰ You can also change params in 'train.sh'(these params will replace opt.xxx in config.py) and use 'nohup sh train.sh &' to train
+    Ⅱ If you want to close mulit-size training, change opt.random_size = None or (20, 21) in 'config.py' or set random_size=None in 'train.sh'
+    Ⅲ Mulit-gpu train: change opt.gpus = "3,5,6,7"
+    Ⅳ Visualized log by tensorboard: tensorboard --logdir exp/your_exp_id/logs_2021-08-xx-xx-xx and visit http://localhost:6006
+       Your can also use the following shell scripts:
+           grep 'train epoch' exp/your_exp_id/logs_2021-08-xx-xx-xx/log.txt
+           grep 'val epoch' exp/your_exp_id/logs_2021-08-xx-xx-xx/log.txt
+           grep 'AP' exp/your_exp_id/logs_2021-08-xx-xx-xx/log.txt |grep 0.95
     
 #### Evaluate
 
-    The trained weights will be saved in './exp/your_exp_id/model_xx.pth'
+    The weights will be saved in './exp/your_exp_id/model_xx.pth'
     change 'load_model'='weight/path/to/evaluate.pth' and backbone='backbone-type' in 'evaluate.sh'
     sh evaluate.sh
     
@@ -104,21 +109,7 @@ The weights were converted from [YOLOX](https://github.com/Megvii-BaseDetection/
     DOING
 
 #### Multi-class MOT Dataset
-    DOING, not ready
-    1. download and unzip VisDrone dataset http://aiskyeye.com/download/multi-object-tracking_2021
-    
-    2. put train and val dataset into:
-    /path/to/dataset/VisDrone/VisDrone2019-MOT-train  # This folder contains two subfolders, 'annotations' and 'sequences'
-    /path/to/dataset/VisDrone/VisDrone2019-MOT-val  # This folder contains two subfolders, 'annotations' and 'sequences'
-    
-    3. change opt.dataset_path = "/path/to/dataset/VisDrone" in 'config.py'
-    4. python tools/visdrone_mot_to_coco.py  # converted to COCO format
-    5.(Optional) python tools/show_coco_anns.py  # visualized tracking id
-    
-    6. set class name and tracking id number
-    change opt.label_name=['pedestrian', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus', 'motor']
-    change opt.tracking_id_nums=[1829, 853, 323, 3017, 295, 159, 215, 79, 55, 749]
-    change opt.reid_dim=128
+    DOING
 
 #### Train
     DOING
@@ -133,3 +124,4 @@ The weights were converted from [YOLOX](https://github.com/Megvii-BaseDetection/
     https://github.com/Megvii-BaseDetection/YOLOX
     https://github.com/PaddlePaddle/PaddleDetection
     https://github.com/open-mmlab/mmdetection
+    https://github.com/xingyizhou/CenterNet

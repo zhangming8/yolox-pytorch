@@ -171,8 +171,9 @@ def set_device(model_with_loss, optimizer, opt):
     else:
         model_with_loss = model_with_loss.to(opt.device)
 
-    for state in optimizer.state.values():
-        for k, v in state.items():
-            if isinstance(v, torch.Tensor):
-                state[k] = v.to(device=opt.device, non_blocking=True)
+    if optimizer is not None:
+        for state in optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(device=opt.device, non_blocking=True)
     return model_with_loss, optimizer

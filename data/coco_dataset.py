@@ -9,7 +9,7 @@ import torch
 import sys
 
 sys.path.append(".")
-from data import (COCODataset, TrainTransform, YoloBatchSampler, DataLoader, InfiniteSampler, MosaicDetection)
+from data import COCODataset, TrainTransform, YoloBatchSampler, DataLoader, InfiniteSampler, MosaicDetection
 
 
 def get_dataloader(opt, no_aug=False):
@@ -34,7 +34,7 @@ def get_dataloader(opt, no_aug=False):
         enable_mixup=opt.enable_mixup,
         tracking=do_tracking,
     )
-    train_sampler = InfiniteSampler(len(train_dataset), seed=opt.seed)
+    train_sampler = InfiniteSampler(len(train_dataset), seed=opt.seed if opt.seed is not None else 0)
     batch_sampler = YoloBatchSampler(
         sampler=train_sampler,
         batch_size=opt.batch_size,
@@ -56,19 +56,10 @@ def get_dataloader(opt, no_aug=False):
                                augment=False))
     val_sampler = torch.utils.data.SequentialSampler(val_dataset)
     val_kwargs = {"num_workers": opt.data_num_workers, "pin_memory": True, "sampler": val_sampler,
-                  "batch_size": opt.batch_size}
+                  "batch_size": opt.batch_size, "drop_last": True}
     val_loader = torch.utils.data.DataLoader(val_dataset, **val_kwargs)
 
     return train_loader, val_loader
-
-
-def memory_info():
-    import psutil
-
-    mem_total = psutil.virtual_memory().total / 1024 / 1024 / 1024
-    mem_used = psutil.virtual_memory().used / 1024 / 1024 / 1024
-    mem_percent = psutil.virtual_memory().percent
-    return mem_percent, mem_used, mem_total
 
 
 def vis_inputs(inputs, targets, opt):

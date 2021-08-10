@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import os
 import cv2
+import time
 import shutil
 import json
 import numpy as np
@@ -52,6 +53,19 @@ def merge_opt(opt, params):
     opt = change_list_to_str(opt, "gpus")
     # opt = change_list_to_str(opt, "lr_decay_epoch")
     return opt, input_params
+
+
+def sync_time(inputs):
+    torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
+    return time.time()
+
+
+def gpu_mem_usage():
+    """
+    Compute the GPU memory usage for the current device (MB).
+    """
+    mem_usage_bytes = torch.cuda.max_memory_allocated()
+    return mem_usage_bytes / (1024 * 1024)
 
 
 def configure_module(ulimit_value=8192):

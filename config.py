@@ -10,6 +10,7 @@ from utils.util import merge_opt
 
 
 def update_nano_tiny(cfg, inp_params):
+    # yolo-nano, yolo-tiny config:
     cfg.scale = cfg.scale if 'scale' in inp_params else (0.5, 1.5)
     cfg.test_size = cfg.test_size if 'test_size' in inp_params else (416, 416)
     cfg.enable_mixup = cfg.enable_mixup if 'enable_mixup' in inp_params else False
@@ -26,7 +27,6 @@ opt = EasyDict()
 opt.exp_id = "coco_CSPDarknet-s_640x640"  # experiment name, you can change it to any other name
 opt.dataset_path = "/data/dataset/coco_dataset"  # COCO detection
 # opt.dataset_path = r"D:\work\public_dataset\coco2017"  # Windows system
-# opt.dataset_path = "/media/ming/DATA1/dataset/VisDrone"  # MOT tracking
 opt.backbone = "CSPDarknet-s"  # CSPDarknet-nano, CSPDarknet-tiny, CSPDarknet-s, CSPDarknet-m, l, x
 opt.input_size = (640, 640)
 opt.random_size = (14, 26)  # None; multi-size train: from 448 to 800, random sample an int value and *32 as input size
@@ -79,7 +79,7 @@ opt.shear = 2.0
 opt.perspective = 0.0
 opt.enable_mixup = True
 opt.seed = 0
-opt.data_num_workers = 0
+opt.data_num_workers = 4
 
 opt.momentum = 0.9
 opt.vis_thresh = 0.3  # inference confidence, used in 'predict.py'
@@ -87,7 +87,7 @@ opt.load_model = ''
 opt.ema = True  # False, Exponential Moving Average
 opt.grad_clip = dict(max_norm=35, norm_type=2)  # None, clip gradient makes training more stable
 opt.print_iter = 1  # print loss every 1 iteration
-opt.metric = "loss"  # 'Ap' 'loss', a little slow when set 'Ap'
+opt.metric = "loss"  # 'Ap' 'loss', used to save 'model_best.pth'
 opt.val_intervals = 1  # evaluate(when metric='Ap') and save best ckpt every 1 epoch
 opt.save_epoch = 1  # save check point every 1 epoch
 opt.resume = False  # resume from 'model_last.pth' when set True
@@ -134,4 +134,4 @@ if opt.reid_dim > 0:
     assert opt.tracking_id_nums is not None
 
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus_str
-print("\n{} final config: {}\n{}".format("-"*20, "-"*20, opt))
+print("\n{} final config: {}\n{}".format("-" * 20, "-" * 20, opt))

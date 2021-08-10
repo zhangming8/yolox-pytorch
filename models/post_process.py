@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import torchvision
 
 
-def yolox_post_process(outputs, down_strides, num_classes, conf_thre, nms_thre, label_name, img_ratios):
+def yolox_post_process(outputs, down_strides, num_classes, conf_thre, nms_thre, label_name, img_ratios, img_shape):
     hw = [i.shape[-2:] for i in outputs]
     grids, strides = [], []
     for (hsize, wsize), stride in zip(hw, down_strides):
@@ -63,11 +63,17 @@ def yolox_post_process(outputs, down_strides, num_classes, conf_thre, nms_thre, 
 
         detections[:, :4] = detections[:, :4] / img_ratios[i]
 
+        img_h, img_w = img_shape[i]
         for det in detections:
             x1, y1, x2, y2, obj_conf, class_conf, class_pred = det[0:7]
             bbox = [float(x1), float(y1), float(x2), float(y2)]
             conf = float(obj_conf * class_conf)
             label = label_name[int(class_pred)]
+            # clip bbox
+            bbox[0] = max(0, min(img_w, bbox[0]))
+            bbox[1] = max(0, min(img_h, bbox[1]))
+            bbox[2] = max(0, min(img_w, bbox[2]))
+            bbox[3] = max(0, min(img_h, bbox[3]))
 
             if reid_dim > 0:
                 reid_feat = det[7:].cpu().numpy().tolist()

@@ -3,7 +3,6 @@
 # @Author  : MingZhang
 # @Email   : zm19921120@126.com
 
-import cv2
 import time
 import numpy as np
 import torch
@@ -14,8 +13,10 @@ from models.neck.yolo_fpn import YOLOXPAFPN
 from models.head.yolo_head import YOLOXHead
 from models.losses import YOLOXLoss
 from models.post_process import yolox_post_process
+from models.ops import fuse_model
 from data.data_augment import preproc
 from utils.model_utils import load_model
+from utils.util import sync_time
 
 
 def get_model(opt):
@@ -55,50 +56,29 @@ class YOLOX(nn.Module):
         self.neck.init_weights()
         self.head.init_weights()
 
-    def forward(self, inputs, targets=None, return_loss=False, return_pred=True, vis_thresh=0.001, ratio=None,
-                show_time=False):
-        assert return_loss or return_pred
-
-        loss, predicts = "", ""
+    def forward(self, inputs, targets=None, show_time=False):
         with torch.cuda.amp.autocast(enabled=self.opt.use_amp):
             if show_time:
-                torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
-                s1 = time.time()
+                s1 = sync_time(inputs)
 
             body_feats = self.backbone(inputs)
             neck_feats = self.neck(body_feats)
             yolo_outputs = self.head(neck_feats)
-            # print('yolo_outputs:', [i.dtype for i in yolo_outputs])  # float16 when use_amp=True
+            # print('yolo_outputs:', [[i.shape, i.dtype] for i in yolo_outputs])  # float16 when use_amp=True
 
             if show_time:
-                torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
-                s2 = time.time()
+                s2 = sync_time(inputs)
                 print("[inference] batch={} time: {}s".format("x".join([str(i) for i in inputs.shape]), s2 - s1))
 
-            if return_loss:
-                assert targets is not None
+            if targets is not None:
                 loss = self.loss(yolo_outputs, targets)
                 # for k, v in loss.items():
                 #     print(k, v, v.dtype)  # always float32
 
-        if return_pred:
-            if ratio is None:
-                return yolo_outputs
-            assert ratio is not None
-            if show_time:
-                torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
-                s3 = time.time()
-
-            predicts = yolox_post_process(yolo_outputs, self.opt.stride, self.opt.num_classes, vis_thresh,
-                                          self.opt.nms_thresh, self.opt.label_name, ratio)
-            if show_time:
-                torch.cuda.synchronize() if 'cpu' not in inputs.device.type else ""
-                s4 = time.time()
-                print("[post_process] time: {}s".format(s4 - s3))
-        if return_loss:
-            return predicts, loss
+        if targets is not None:
+            return yolo_outputs, loss
         else:
-            return predicts
+            return yolo_outputs
 
 
 class Detector(object):
@@ -111,31 +91,9 @@ class Detector(object):
         self.model = load_model(self.model, self.opt.load_model)
         self.model.to(self.opt.device)
         self.model.eval()
-
-    @staticmethod
-    def letterbox(img, dst_shape, color=(0, 0, 0)):
-        if type(dst_shape) == int:
-            dst_shape = [dst_shape, dst_shape]
-
-        ratio_dst = dst_shape[0] / float(dst_shape[1])
-        img_h, img_w = img.shape[0], img.shape[1]
-
-        ratio_org = img_h / float(img_w)
-        if ratio_dst > ratio_org:
-            scale = dst_shape[1] / float(img_w)
-        else:
-            scale = dst_shape[0] / float(img_h)
-
-        new_shape = (int(round(img_w * scale)), int(round(img_h * scale)))
-
-        dw = (dst_shape[1] - new_shape[0]) / 2  # width padding
-        dh = (dst_shape[0] - new_shape[1]) / 2  # height padding
-        top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
-        left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
-
-        img = cv2.resize(img, new_shape, interpolation=cv2.INTER_LINEAR)
-        img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # padded square
-        return img
+        if "fuse" in self.opt and self.opt.fuse:
+            print("==>> fuse model's conv and bn...")
+            self.model = fuse_model(self.model)
 
     def run(self, images, vis_thresh, show_time=False):
         batch_img = True
@@ -146,18 +104,29 @@ class Detector(object):
         with torch.no_grad():
             if show_time:
                 s1 = time.time()
-            img_ratios = []
+
+            img_ratios, img_shape = [], []
             inp_imgs = np.zeros([len(images), 3, self.opt.test_size[0], self.opt.test_size[1]], dtype=np.float32)
             for b_i, image in enumerate(images):
+                img_shape.append(image.shape[:2])
                 img, r = preproc(image, self.opt.test_size, self.opt.rgb_means, self.opt.std)
                 inp_imgs[b_i] = img
                 img_ratios.append(r)
 
             if show_time:
-                print("[preprocess] time {}".format(time.time() - s1))
-            inp_imgs = torch.from_numpy(inp_imgs).to(self.opt.device)
-            predicts = self.model(inp_imgs, vis_thresh=vis_thresh, ratio=img_ratios, show_time=show_time)
+                s2 = time.time()
+                print("[pre_process] time {}".format(s2 - s1))
 
+            inp_imgs = torch.from_numpy(inp_imgs).to(self.opt.device)
+            yolo_outputs = self.model(inp_imgs, show_time=show_time)
+
+            if show_time:
+                s3 = sync_time(inp_imgs)
+            predicts = yolox_post_process(yolo_outputs, self.opt.stride, self.opt.num_classes, vis_thresh,
+                                          self.opt.nms_thresh, self.opt.label_name, img_ratios, img_shape)
+            if show_time:
+                s4 = sync_time(inp_imgs)
+                print("[post_process] time {}".format(s4 - s3))
         if batch_img:
             return predicts
         else:
