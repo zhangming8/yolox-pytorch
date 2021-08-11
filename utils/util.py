@@ -60,6 +60,25 @@ def sync_time(inputs):
     return time.time()
 
 
+def get_total_and_free_memory_in_mb(cuda_device):
+    devices_info_str = os.popen("nvidia-smi --query-gpu=memory.total,memory.used --format=csv,nounits,noheader")
+    devices_info = devices_info_str.read().strip().split("\n")
+    total, used = devices_info[int(cuda_device)].split(",")
+    return int(total), int(used)
+
+
+def occupy_mem(cuda_device, mem_ratio=0.9):
+    """
+    pre-allocate gpu memory for training to avoid memory Fragmentation.
+    """
+    total, used = get_total_and_free_memory_in_mb(0)
+    max_mem = int(total * mem_ratio)
+    block_mem = max_mem - used
+    x = torch.FloatTensor(256, 1024, block_mem).to(cuda_device)
+    del x
+    time.sleep(5)
+
+
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).

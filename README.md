@@ -57,7 +57,7 @@ mAP was reevaluated on COCO val2017 and test2017, and some results are slightly 
     
     d. Some tips:
     Ⅰ You can also change params in 'train.sh'(these params will replace opt.xxx in config.py) and use 'nohup sh train.sh &' to train
-    Ⅱ If you want to close mulit-size training, change opt.random_size = None or (20, 21) in 'config.py' or set random_size=None in 'train.sh'
+    Ⅱ If you want to close mulit-size training, change opt.random_size = None in 'config.py' or set random_size=None in 'train.sh'
     Ⅲ Mulit-gpu train: change opt.gpus = "3,5,6,7"
     Ⅳ Visualized log by tensorboard: tensorboard --logdir exp/your_exp_id/logs_2021-08-xx-xx-xx and visit http://localhost:6006
        Your can also use the following shell scripts:

@@ -19,7 +19,7 @@ from data.coco_dataset import get_dataloader
 from models.yolox import get_model
 from models.post_process import yolox_post_process
 from utils.lr_scheduler import LRScheduler
-from utils.util import AverageMeter, write_log, configure_module
+from utils.util import AverageMeter, write_log, configure_module, occupy_mem
 from utils.model_utils import EMA, save_model, load_model, ensure_same, clip_grads
 from utils.data_parallel import set_device, _DataParallel
 from utils.logger import Logger
@@ -98,8 +98,7 @@ def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, 
                 avg_loss_stats[l] = AverageMeter()
             avg_loss_stats[l].update(loss_stats[l], inps.size(0))
             Bar.suffix = Bar.suffix + '|{} {:.4f} '.format(l, avg_loss_stats[l].avg)
-        Bar.suffix = Bar.suffix + '|Data {dt.val:.3f}s({dt.avg:.3f}s) |Net {bt.avg:.3f}s'.format(dt=data_time,
-                                                                                                 bt=batch_time)
+        Bar.suffix = Bar.suffix + '|Data {dt.val:.3f}s |Batch {bt.val:.3f}s'.format(dt=data_time, bt=batch_time)
         if opt.print_iter > 0 and iter_id % opt.print_iter == 0:
             print('{}| {}'.format(opt.exp_id, Bar.suffix))
             logger.write('{}| {}\n'.format(opt.exp_id, Bar.suffix))
@@ -178,6 +177,7 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
                 if loss_dict_val['loss'] <= best:
                     best = loss_dict_val['loss']
                     save_model(os.path.join(opt.save_dir, 'model_best.pth'), epoch, model)
+            del loss_dict_val, preds
 
         save_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(epoch)), epoch,
                    model) if epoch % opt.save_epoch == 0 else ""
@@ -227,6 +227,8 @@ def main():
 
     # DP
     opt.device = torch.device('cuda' if opt.gpus[0] >= 0 else 'cpu')
+    if opt.occupy_mem and opt.device.type != 'cpu':
+        occupy_mem(opt.device)
     model, optimizer = set_device(model, optimizer, opt)
     train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, start_epoch, opt.accumulate, no_aug)
 

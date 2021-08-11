@@ -29,7 +29,7 @@ opt.dataset_path = "/data/dataset/coco_dataset"  # COCO detection
 # opt.dataset_path = r"D:\work\public_dataset\coco2017"  # Windows system
 opt.backbone = "CSPDarknet-s"  # CSPDarknet-nano, CSPDarknet-tiny, CSPDarknet-s, CSPDarknet-m, l, x
 opt.input_size = (640, 640)
-opt.random_size = (14, 26)  # None; multi-size train: from 448 to 800, random sample an int value and *32 as input size
+opt.random_size = (14, 26)  # None; multi-size train: from 448(14*32) to 832(26*32), set None to disable it
 opt.test_size = (640, 640)  # evaluate size
 opt.gpus = "0"  # "-1" "0" "3,4,5" "0,1,2,3,4,5,6,7" # -1 for cpu
 opt.batch_size = 24
@@ -78,7 +78,7 @@ opt.scale = (0.1, 2)
 opt.shear = 2.0
 opt.perspective = 0.0
 opt.enable_mixup = True
-opt.seed = 0
+opt.seed = None  # 0
 opt.data_num_workers = 4
 
 opt.momentum = 0.9
@@ -94,6 +94,7 @@ opt.resume = False  # resume from 'model_last.pth' when set True
 opt.use_amp = False  # True
 opt.cuda_benchmark = True
 opt.nms_thresh = 0.65
+opt.occupy_mem = False  # pre-allocate gpu memory for training to avoid memory Fragmentation.
 
 opt.rgb_means = [0.485, 0.456, 0.406]
 opt.std = [0.229, 0.224, 0.225]
@@ -132,6 +133,7 @@ if opt.random_size is not None and (opt.random_size[1] - opt.random_size[0] > 1)
     opt.cuda_benchmark = False
 if opt.reid_dim > 0:
     assert opt.tracking_id_nums is not None
-
+if opt.random_size is None:
+    opt.test_size = opt.input_size
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus_str
 print("\n{} final config: {}\n{}".format("-" * 20, "-" * 20, opt))

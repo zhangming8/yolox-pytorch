@@ -19,3 +19,6 @@ python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSP
 
 # resume 'model_last.pth', include weight, optimizer, scaler and epoch
 #python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 metric="ap" batch_size=48 load_model="exp/coco_CSPDarknet-s_640x640/model_last.pth" resume=True
+
+# GPU memory changes with the input size when multi-size training, which can be avoided by pre allocating memory
+#python train.py gpus='0' backbone="CSPDarknet-tiny" num_epochs=300 exp_id="coco_CSPDarknet-tiny_416x416" use_amp=True val_intervals=2 data_num_workers=6 metric="ap" batch_size=128 occupy_mem=True
