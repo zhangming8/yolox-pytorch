@@ -56,7 +56,7 @@ def get_dataloader(opt, no_aug=False):
                                augment=False))
     val_sampler = torch.utils.data.SequentialSampler(val_dataset)
     val_kwargs = {"num_workers": opt.data_num_workers, "pin_memory": True, "sampler": val_sampler,
-                  "batch_size": opt.batch_size, "drop_last": True}
+                  "batch_size": opt.batch_size, "drop_last": False}
     val_loader = torch.utils.data.DataLoader(val_dataset, **val_kwargs)
 
     return train_loader, val_loader

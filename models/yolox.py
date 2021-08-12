@@ -64,7 +64,7 @@ class YOLOX(nn.Module):
             body_feats = self.backbone(inputs)
             neck_feats = self.neck(body_feats)
             yolo_outputs = self.head(neck_feats)
-            # print('yolo_outputs:', [[i.shape, i.dtype] for i in yolo_outputs])  # float16 when use_amp=True
+            # print('yolo_outputs:', [[i.shape, i.dtype, i.device] for i in yolo_outputs])  # float16 when use_amp=True
 
             if show_time:
                 s2 = sync_time(inputs)
@@ -73,7 +73,7 @@ class YOLOX(nn.Module):
             if targets is not None:
                 loss = self.loss(yolo_outputs, targets)
                 # for k, v in loss.items():
-                #     print(k, v, v.dtype)  # always float32
+                #     print(k, v, v.dtype, v.device)  # always float32
 
         if targets is not None:
             return yolo_outputs, loss

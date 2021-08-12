@@ -77,7 +77,7 @@ def load_model(model, model_path, optimizer=None, scaler=None, resume=False):
         return model
 
 
-def save_model(path, epoch, model, optimizer=None, scaler=None):
+def save_model(path, epoch, model, optimizer=None, scaler=None, logger=None):
     if isinstance(model, torch.nn.DataParallel):
         state_dict = model.module.state_dict()
     else:
@@ -90,6 +90,9 @@ def save_model(path, epoch, model, optimizer=None, scaler=None):
 
     if not (scaler is None):
         data["scaler"] = scaler.state_dict()
+    print("epoch {}, save weight to {}".format(epoch, path))
+    if logger:
+        logger.write("epoch {}, save weight to {}\n".format(epoch, path))
     torch.save(data, path)
 
 

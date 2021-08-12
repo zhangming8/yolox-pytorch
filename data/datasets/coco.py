@@ -2,9 +2,11 @@
 # -*- coding:utf-8 -*-
 # Copyright (c) Megvii, Inc. and its affiliates.
 
+import io
 import os
 import cv2
 import json
+import contextlib
 import numpy as np
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
@@ -81,9 +83,14 @@ class COCODataset(Dataset):
         coco_eval = COCOeval(self.coco, coco_det, "bbox")
         coco_eval.evaluate()
         coco_eval.accumulate()
-        coco_eval.summarize()
-        ap, ap_0_5 = coco_eval.stats[0], coco_eval.stats[1]
-        return ap, ap_0_5
+
+        redirect_string = io.StringIO()
+        with contextlib.redirect_stdout(redirect_string):
+            coco_eval.summarize()
+        str_result = redirect_string.getvalue()
+        ap, ap_0_5, ap_7_5, ap_small, ap_medium, ap_large = coco_eval.stats[:6]
+        print(str_result)
+        return ap, ap_0_5, ap_7_5, ap_small, ap_medium, ap_large, str_result
 
     def _load_coco_annotations(self):
         return [self.load_anno_from_ids(_ids) for _ids in self.ids]

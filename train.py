@@ -20,66 +20,52 @@ from models.yolox import get_model
 from models.post_process import yolox_post_process
 from utils.lr_scheduler import LRScheduler
 from utils.util import AverageMeter, write_log, configure_module, occupy_mem
-from utils.model_utils import EMA, save_model, load_model, ensure_same, clip_grads
+from utils.model_utils import save_model, load_model, clip_grads
+from utils.ema import ModelEMA
 from utils.data_parallel import set_device, _DataParallel
 from utils.logger import Logger
 
 
 def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, num_iter, total_iter,
-              train_loader=None, lr_scheduler=None, accumulate=1):
+              train_loader=None, lr_scheduler=None):
     if phase == 'train':
         model_with_loss.train()
     else:
         model_with_loss.eval()
         torch.cuda.empty_cache()
 
-    results = {}
+    results, avg_loss_stats, last_opt_iter = {}, {}, 0
     data_time, batch_time = AverageMeter(), AverageMeter()
-    avg_loss_stats = {}
     bar = Bar('{}'.format(opt.exp_id), max=num_iter)
     end = time.time()
-    last_opt_iter = 0
-    optimizer.zero_grad() if phase == 'train' else ""
     for iter_id in range(1, num_iter + 1):
-        # load data
         inps, targets, img_info, ind = next(data_iter)
         inps = inps.to(device=opt.device, non_blocking=True)
         targets = targets.to(device=opt.device, non_blocking=True)
         data_time.update(time.time() - end)
 
-        # inference and calculate loss
-        yolo_outputs, loss_stats = model_with_loss(inps, targets=targets)
-        loss_stats = {k: v.mean() for k, v in loss_stats.items()}
         if phase == 'train':
             iteration = (epoch - 1) * num_iter + iter_id
+            optimizer.zero_grad()
+            _, loss_stats = model_with_loss(inps, targets=targets)
+            loss_stats = {k: v.mean() for k, v in loss_stats.items()}
             scaler.scale(loss_stats["loss"]).backward()
-
-            if iteration - last_opt_iter >= accumulate or iter_id == num_iter:
-                if opt.grad_clip is not None and not opt.use_amp:
-                    scaler.unscale_(optimizer)
-                    grad_normal = clip_grads(model_with_loss, opt.grad_clip)
-                    loss_stats['grad_normal'] = grad_normal
-                scaler.step(optimizer)
-                scaler.update()
-                optimizer.zero_grad()
-                ema.update_params() if ema else ''
-                last_opt_iter = iteration
+            if opt.grad_clip is not None and not opt.use_amp:
+                scaler.unscale_(optimizer)
+                grad_normal = clip_grads(model_with_loss, opt.grad_clip)
+                loss_stats['grad_normal'] = grad_normal
+            scaler.step(optimizer)
+            scaler.update()
+            ema.update(model_with_loss) if opt.ema else ''
 
             lr = lr_scheduler.update_lr(iteration)
             for param_group in optimizer.param_groups:
                 param_group["lr"] = lr
-
             if (iteration - 1) % 50 == 0 and epoch <= 15:
                 logger.scalar_summary("lr_iter_before_15_epoch", lr, iteration)
         else:
-            iteration, total_iter = iter_id, num_iter
-            lr = optimizer.param_groups[0]['lr']
-
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        cal_ap = phase != 'train' and "ap" in opt.metric and opt.val_intervals > 0 and epoch % opt.val_intervals == 0
-        if cal_ap:
+            yolo_outputs, loss_stats = model_with_loss(inps, targets=targets)
+            iteration, total_iter, lr = iter_id, num_iter, optimizer.param_groups[0]['lr']
             img_ratio = [float(min(opt.test_size[0] / img_info[0][i], opt.test_size[1] / img_info[1][i])) for i in
                          range(inps.shape[0])]
             img_shape = [[int(img_info[0][i]), int(img_info[1][i])] for i in range(inps.shape[0])]
@@ -88,6 +74,8 @@ def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, 
             for img_id, predict in zip(ind.cpu().numpy().tolist(), predicts):
                 results[img_id] = predict
 
+        batch_time.update(time.time() - end)
+        end = time.time()
         shapes = "x".join([str(i) for i in inps.shape])
         Bar.suffix = '{phase}: total_epoch[{0}/{1}] total_batch[{2}/{3}] batch[{4}/{5}] |size: {6} |lr: {7} |Tot: ' \
                      '{total:} |ETA: {eta:} '.format(epoch, opt.num_epochs, iteration, total_iter, iter_id, num_iter,
@@ -122,8 +110,8 @@ def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, 
     return ret, results
 
 
-def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, start_epoch, accumulate, no_aug):
-    best = 1e10 if opt.metric == "loss" else -1
+def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, start_epoch, no_aug):
+    best = -1
     iter_per_train_epoch = len(train_loader)
     iter_per_val_epoch = len(val_loader)
 
@@ -132,8 +120,8 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
     total_train_iteration = opt.num_epochs * iter_per_train_epoch
 
     # exponential moving average
-    ema = EMA(model) if opt.ema else None
-
+    ema = ModelEMA(model)
+    ema.updates = iter_per_train_epoch * start_epoch
     for epoch in range(start_epoch + 1, opt.num_epochs + 1):
         if epoch == opt.num_epochs - opt.no_aug_epochs or no_aug:
             logger.write("--->No mosaic aug now! epoch {}\n".format(epoch))
@@ -147,43 +135,33 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
 
         logger.scalar_summary("lr_epoch", optimizer.param_groups[0]['lr'], epoch)
         loss_dict_train, _ = run_epoch(model, optimizer, scaler, ema, "train", epoch, train_iter, iter_per_train_epoch,
-                                       total_train_iteration, train_loader, lr_scheduler, accumulate)
+                                       total_train_iteration, train_loader, lr_scheduler)
         logger.write('train epoch: {} |'.format(epoch))
         write_log(loss_dict_train, logger, epoch, "train")
 
-        ema.apply_shadow() if ema is not None else ""
         if opt.val_intervals > 0 and epoch % opt.val_intervals == 0:
-            save_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(epoch)), epoch, model)
-            logger.write('----------epoch {} evaluating----------\n'.format(epoch))
+            logger.write('----------epoch {} start evaluate----------\n'.format(epoch))
             with torch.no_grad():
-                loss_dict_val, preds = run_epoch(model, optimizer, None, None, "val", epoch, iter(val_loader),
+                loss_dict_val, preds = run_epoch(ema.ema, optimizer, None, None, "val", epoch, iter(val_loader),
                                                  iter_per_val_epoch, iter_per_val_epoch)
-            logger.write('----------epoch {} evaluate done----------\n'.format(epoch))
+            logger.write('----------epoch {} evaluating ----------\n'.format(epoch))
             logger.write('val epoch: {} |'.format(epoch))
+            ap, ap_0_5, ap_7_5, ap_small, ap_medium, ap_large, r = val_loader.dataset.run_coco_eval(preds, opt.save_dir)
+            loss_dict_val["AP"], loss_dict_val["AP_0.5"], loss_dict_val["AP_0.75"] = ap, ap_0_5, ap_7_5
+            loss_dict_val["AP_small"], loss_dict_val["AP_medium"] = ap_small, ap_medium
+            loss_dict_val["AP_large"] = ap_large
             write_log(loss_dict_val, logger, epoch, "val")
-
-            if "ap" in opt.metric.lower():
-                ap, ap_0_5 = val_loader.dataset.run_coco_eval(preds, opt.save_dir)
-                logger.write("epoch {}, Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = {:.3f}"
-                             "\n".format(epoch, ap))
-                logger.write("epoch {}, Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = {:.3f}"
-                             "\n".format(epoch, ap_0_5))
-                logger.scalar_summary("val_AP", ap, epoch)
-                logger.scalar_summary("val_AP_05", ap_0_5, epoch)
-                if ap >= best:
-                    best = ap
-                    save_model(os.path.join(opt.save_dir, 'model_best.pth'), epoch, model)
-            elif opt.metric == "loss":
-                if loss_dict_val['loss'] <= best:
-                    best = loss_dict_val['loss']
-                    save_model(os.path.join(opt.save_dir, 'model_best.pth'), epoch, model)
+            logger.write("\n{}\n".format(r))
+            if ap >= best:
+                save_model(os.path.join(opt.save_dir, 'model_best.pth'), epoch, ema.ema, logger=logger)
+                best = ap
             del loss_dict_val, preds
 
         save_model(os.path.join(opt.save_dir, 'model_{}.pth'.format(epoch)), epoch,
-                   model) if epoch % opt.save_epoch == 0 else ""
-        save_model(os.path.join(opt.save_dir, 'model_last.pth'), epoch, model, optimizer, scaler)
-        ema.restore() if ema is not None else ""
+                   ema.ema, logger=logger) if epoch % opt.save_epoch == 0 else ""
+        save_model(os.path.join(opt.save_dir, 'model_last.pth'), epoch, ema.ema, optimizer, scaler, logger=logger)
 
+    logger.write("training finished... please use 'evaluate.sh' to get the final mAP on val dataset\n")
     logger.close()
 
 
@@ -230,7 +208,7 @@ def main():
     if opt.occupy_mem and opt.device.type != 'cpu':
         occupy_mem(opt.device)
     model, optimizer = set_device(model, optimizer, opt)
-    train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, start_epoch, opt.accumulate, no_aug)
+    train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, start_epoch, no_aug)
 
 
 if __name__ == "__main__":

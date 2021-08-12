@@ -1,10 +1,12 @@
 ## A pytorch easy re-implement of "YOLOX: Exceeding YOLO Series in 2021"
 
 ## 1. Notes
+
     This is a pytorch easy re-implement of "YOLOX: Exceeding YOLO Series in 2021" [https://arxiv.org/abs/2107.08430]
     The repo is still under development
 
 ## 2. Environment
+
     pytorch>=1.7.0, python>=3.6, Ubuntu/Windows, see more in 'requirements.txt'
     
     cd /path/to/your/work
@@ -16,7 +18,9 @@
 
 #### Model Zoo
 
-All weights can be downloaded from [GoogleDrive](https://drive.google.com/drive/folders/1qEMLzikH5JwRNRoHpeCa6BJBeSQ6xXCH?usp=sharing) or [BaiduDrive](https://pan.baidu.com/s/1UsbdnyVwRJhr9Vy1tmJLeQ) (code:bc72)
+All weights can be downloaded
+from [GoogleDrive](https://drive.google.com/drive/folders/1qEMLzikH5JwRNRoHpeCa6BJBeSQ6xXCH?usp=sharing)
+or [BaiduDrive](https://pan.baidu.com/s/1UsbdnyVwRJhr9Vy1tmJLeQ) (code:bc72)
 
 |Model      |test size  |mAP<sup>val<br>0.5:0.95 |mAP<sup>test<br>0.5:0.95 | Params<br>(M) |
 | ------    |:---:      |:---:                   | :---:                   |:---:          |
@@ -28,9 +32,11 @@ All weights can be downloaded from [GoogleDrive](https://drive.google.com/drive/
 |yolox-x    |640        |50.5                    |51.1                     |99.1           |
 |yolox-x    |800        |51.2                    |51.9                     |99.1           |
 
-mAP was reevaluated on COCO val2017 and test2017, and some results are slightly better than the official implement [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX). You can reproduce them by scripts in 'evaluate.sh'
+mAP was reevaluated on COCO val2017 and test2017, and some results are slightly better than the official
+implement [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX). You can reproduce them by scripts in 'evaluate.sh'
 
 #### Dataset
+
     download COCO:
     http://images.cocodataset.org/zips/train2017.zip
     http://images.cocodataset.org/zips/val2017.zip
@@ -45,34 +51,37 @@ mAP was reevaluated on COCO val2017 and test2017, and some results are slightly 
     change opt.dataset_path = "/path/to/dataset" in 'config.py'
 
 #### Train
+
     See more example in 'train.sh'
-    a. Train from scratch:(backbone="CSPDarknet-s" means using yolox-s, and you can change it to any other backbone, eg: CSPDarknet-nano, tiny, s, m, l, x)
-    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 metric="ap" batch_size=48
+    a. Train from scratch:(backbone="CSPDarknet-s" means using yolox-s, and you can change it, eg: CSPDarknet-nano, tiny, s, m, l, x)
+    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 batch_size=48
     
     b. Finetune, download pre-trained weight on COCO and finetune on customer dataset:
-    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 metric="ap" batch_size=48 load_model="../weights/yolox-s.pth" resume=False
+    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 batch_size=48 load_model="../weights/yolox-s.pth"
     
     c. Resume, you can use 'resume=True' when your training is accidentally stopped:
-    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 metric="ap" batch_size=48 load_model="exp/coco_CSPDarknet-s_640x640/model_last.pth" resume=True
-    
-    d. Some tips:
-    Ⅰ You can also change params in 'train.sh'(these params will replace opt.xxx in config.py) and use 'nohup sh train.sh &' to train
-    Ⅱ If you want to close mulit-size training, change opt.random_size = None in 'config.py' or set random_size=None in 'train.sh'
-    Ⅲ Mulit-gpu train: change opt.gpus = "3,5,6,7"
-    Ⅳ Visualized log by tensorboard: tensorboard --logdir exp/your_exp_id/logs_2021-08-xx-xx-xx and visit http://localhost:6006
+    python train.py gpus='0' backbone="CSPDarknet-s" num_epochs=300 exp_id="coco_CSPDarknet-s_640x640" use_amp=True val_intervals=2 data_num_workers=6 batch_size=48 load_model="exp/coco_CSPDarknet-s_640x640/model_last.pth" resume=True
+
+#### Some Tips:
+
+    a. You can also change params in 'train.sh'(these params will replace opt.xxx in config.py) and use 'nohup sh train.sh &' to train
+    b. Multi-gpu train: set opt.gpus = "3,5,6,7" in 'config.py' or set gpus="3,5,6,7" in 'train.sh'
+    c. If you want to close multi-size training, change opt.random_size = None in 'config.py' or set random_size=None in 'train.sh'
+    d. random_size = (14, 26) means: Randomly select an integer from interval (14,26) and multiply by 32 as the input size
+    e. Visualized log by tensorboard: 
+        tensorboard --logdir exp/your_exp_id/logs_2021-08-xx-xx-xx and visit http://localhost:6006
        Your can also use the following shell scripts:
-           grep 'train epoch' exp/your_exp_id/logs_2021-08-xx-xx-xx/log.txt
-           grep 'val epoch' exp/your_exp_id/logs_2021-08-xx-xx-xx/log.txt
-           grep 'AP' exp/your_exp_id/logs_2021-08-xx-xx-xx/log.txt |grep 0.95
-    
+        (1) grep 'train epoch' exp/your_exp_id/logs_2021-08-xx-xx-xx/log.txt
+        (2) grep 'val epoch' exp/your_exp_id/logs_2021-08-xx-xx-xx/log.txt
+
 #### Evaluate
 
-    The weights will be saved in './exp/your_exp_id/model_xx.pth'
+    Module weights will be saved in './exp/your_exp_id/model_xx.pth'
     change 'load_model'='weight/path/to/evaluate.pth' and backbone='backbone-type' in 'evaluate.sh'
     sh evaluate.sh
-    
+
 #### Predict/Inference/Demo
-    
+
     a. Predict images, change img_dir and load_model
     python predict.py gpus='0' backbone="CSPDarknet-s" vis_thresh=0.3 load_model="exp/coco_CSPDarknet-s_640x640/model_best.pth" img_dir='/path/to/dataset/images/val2017'
     
@@ -82,7 +91,7 @@ mAP was reevaluated on COCO val2017 and test2017, and some results are slightly 
     You can also change params in 'predict.sh', and use 'sh predict.sh'
 
 #### Train Customer Dataset(VOC format)
-    
+
     1. put your annotations(.xml) and images(.jpg) into:
         /path/to/voc_data/images/train2017/*.jpg  # train images
         /path/to/voc_data/images/train2017/*.xml  # train xml annotations
@@ -106,21 +115,27 @@ mAP was reevaluated on COCO val2017 and test2017, and some results are slightly 
 ## 4. Multi/One-class Multi-object Tracking(MOT)
 
 #### one-class/single-class MOT Dataset
+
     DOING
 
 #### Multi-class MOT Dataset
+
     DOING
 
 #### Train
+
     DOING
 
 #### Evaluate
+
     DOING
 
 #### Predict/Inference/Demo
+
     DOING
 
 ## 5. Acknowledgement
+
     https://github.com/Megvii-BaseDetection/YOLOX
     https://github.com/PaddlePaddle/PaddleDetection
     https://github.com/open-mmlab/mmdetection

@@ -64,7 +64,6 @@ opt.warmup_lr = 0  # start lr when warmup
 opt.basic_lr_per_img = 0.01 / 64.0
 opt.scheduler = "yoloxwarmcos"
 opt.no_aug_epochs = 15  # close mixup and mosaic augments in the last 15 epochs
-opt.accumulate = 1  # real batch size = accumulate * batch_size
 opt.min_lr_ratio = 0.05
 opt.weight_decay = 5e-4
 opt.warmup_epochs = 5
@@ -87,13 +86,12 @@ opt.load_model = ''
 opt.ema = True  # False, Exponential Moving Average
 opt.grad_clip = dict(max_norm=35, norm_type=2)  # None, clip gradient makes training more stable
 opt.print_iter = 1  # print loss every 1 iteration
-opt.metric = "loss"  # 'Ap' 'loss', used to save 'model_best.pth'
-opt.val_intervals = 1  # evaluate(when metric='Ap') and save best ckpt every 1 epoch
+opt.val_intervals = 2  # evaluate val dataset and save best ckpt every 2 epoch
 opt.save_epoch = 1  # save check point every 1 epoch
 opt.resume = False  # resume from 'model_last.pth' when set True
-opt.use_amp = False  # True
+opt.use_amp = False  # True, Automatic mixed precision
 opt.cuda_benchmark = True
-opt.nms_thresh = 0.65
+opt.nms_thresh = 0.65  # nms IOU threshold in post process
 opt.occupy_mem = False  # pre-allocate gpu memory for training to avoid memory Fragmentation.
 
 opt.rgb_means = [0.485, 0.456, 0.406]
@@ -113,7 +111,6 @@ if isinstance(opt.label_name, str):
     opt.label_name = new_label
 opt.num_classes = len(opt.label_name)
 opt.gpus_str = opt.gpus
-opt.metric = opt.metric.lower()
 opt.gpus = [int(i) for i in opt.gpus.split(',')]
 opt.gpus = [i for i in range(len(opt.gpus))] if opt.gpus[0] >= 0 else [-1]
 if opt.master_batch_size == -1:
@@ -131,6 +128,9 @@ if opt.resume and opt.load_model == '':
     opt.load_model = os.path.join(opt.save_dir, 'model_last.pth')
 if opt.random_size is not None and (opt.random_size[1] - opt.random_size[0] > 1):
     opt.cuda_benchmark = False
+    # TODO, will stuck after evaluating when multi-size training
+    opt.val_intervals = 10000
+    print("[Warning] disable evaluate when multi-size training")
 if opt.reid_dim > 0:
     assert opt.tracking_id_nums is not None
 if opt.random_size is None:
