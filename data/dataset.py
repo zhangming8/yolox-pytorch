@@ -72,7 +72,7 @@ class COCODataset(torch.utils.data.Dataset):
         return self.num_samples
 
     def shuffle(self):
-        np.random.shuffle(self.ids)
+        np.random.shuffle(self.annotations)
         print("shuffle images list in {}".format(self.json_file))
         if self.logger:
             self.logger.write("shuffle {} images list...\n".format(self.json_file))
@@ -165,15 +165,10 @@ class COCODataset(torch.utils.data.Dataset):
 
         del im_ann, annotations
 
-        return res, img_info, file_name
-
-    def load_anno(self, index):
-        return self.annotations[index][0]
+        return res, img_info, file_name, id_
 
     def pull_item(self, index):
-        id_ = self.ids[index]
-
-        res, img_info, file_name = self.annotations[index]
+        res, img_info, file_name, id_ = self.annotations[index]
         # load image and preprocess
         img_file = self.data_dir + "/" + self.name + "/" + file_name
         img = cv2.imread(img_file)
@@ -256,10 +251,7 @@ class COCODataset(torch.utils.data.Dataset):
     def mixup(self, origin_img, origin_labels, input_dim):
         jit_factor = random.uniform(*self.mixup_scale)
         FLIP = random.uniform(0, 1) > 0.5
-        cp_labels = []
-        while len(cp_labels) == 0:
-            cp_index = random.randint(0, self.__len__() - 1)
-            cp_labels = self.load_anno(cp_index)
+        cp_index = random.randint(0, self.__len__() - 1)
         img, cp_labels, _, _ = self.pull_item(cp_index)
 
         if len(img.shape) == 3:
