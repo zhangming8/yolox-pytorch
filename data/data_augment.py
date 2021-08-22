@@ -193,10 +193,9 @@ def preproc(image, input_size, mean, std, swap=(2, 0, 1)):
 
 
 class TrainTransform:
-    def __init__(self, p=0.5, rgb_means=None, std=None, tracking=False, max_labels=50, augment=True):
+    def __init__(self, rgb_means=None, std=None, tracking=False, max_labels=50, augment=True):
         self.means = rgb_means
         self.std = std
-        self.p = p
         self.tracking = tracking
         self.max_labels = max_labels
         self.augment = augment
@@ -227,7 +226,9 @@ class TrainTransform:
         boxes_o = xyxy2cxcywh(boxes_o)
 
         # color aug
-        image_t = _distort(image) if self.augment else image
+        if self.augment:
+            augment_hsv(image)
+        image_t = image
         # flip
         if self.augment:
             image_t, boxes = _mirror(image_t, boxes)

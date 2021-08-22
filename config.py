@@ -14,6 +14,7 @@ def update_nano_tiny(cfg, inp_params):
     cfg.scale = cfg.scale if 'scale' in inp_params else (0.5, 1.5)
     cfg.test_size = cfg.test_size if 'test_size' in inp_params else (416, 416)
     cfg.enable_mixup = cfg.enable_mixup if 'enable_mixup' in inp_params else False
+    cfg.mosaic_prob = cfg.mosaic_prob if 'mosaic_prob' in inp_params else 0.5
     if 'random_size' not in inp_params:
         if cfg.random_size is not None:
             cfg.random_size = (10, 20)
@@ -78,6 +79,8 @@ opt.shear = 2.0
 opt.perspective = 0.0
 opt.enable_mixup = True
 opt.seed = None  # 0
+opt.mosaic_prob = 1.
+opt.mixup_prob = 1.
 opt.data_num_workers = 4
 
 opt.momentum = 0.9
@@ -128,11 +131,6 @@ if opt.resume and opt.load_model == '':
     opt.load_model = os.path.join(opt.save_dir, 'model_last.pth')
 if opt.random_size is not None and (opt.random_size[1] - opt.random_size[0] > 1):
     opt.cuda_benchmark = False
-    # TODO, will stuck after evaluating when multi-size training
-    opt.val_intervals = 10000
-    print("[Warning] disable evaluate when multi-size training")
-if opt.reid_dim > 0:
-    assert opt.tracking_id_nums is not None
 if opt.random_size is None:
     opt.test_size = opt.input_size
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpus_str

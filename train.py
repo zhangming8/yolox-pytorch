@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 
 from config import opt
-from data.coco_dataset import get_dataloader
+from data.dataset import get_dataloader
 from models.yolox import get_model
 from models.post_process import yolox_post_process
 from utils.lr_scheduler import LRScheduler
@@ -26,8 +26,8 @@ from utils.data_parallel import set_device, _DataParallel
 from utils.logger import Logger
 
 
-def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, num_iter, total_iter,
-              train_loader=None, lr_scheduler=None):
+def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_loader, num_iter, total_iter,
+              lr_scheduler=None):
     if phase == 'train':
         model_with_loss.train()
     else:
@@ -38,8 +38,8 @@ def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, 
     data_time, batch_time = AverageMeter(), AverageMeter()
     bar = Bar('{}'.format(opt.exp_id), max=num_iter)
     end = time.time()
-    for iter_id in range(1, num_iter + 1):
-        inps, targets, img_info, ind = next(data_iter)
+    for iter_id, (inps, targets, img_info, ind) in enumerate(data_loader):
+        iter_id += 1
         inps = inps.to(device=opt.device, non_blocking=True)
         targets = targets.to(device=opt.device, non_blocking=True)
         data_time.update(time.time() - end)
@@ -92,18 +92,6 @@ def run_epoch(model_with_loss, optimizer, scaler, ema, phase, epoch, data_iter, 
             logger.write('{}| {}\n'.format(opt.exp_id, Bar.suffix))
         bar.next()
 
-        # random resizing
-        if phase == 'train' and opt.random_size is not None and (iteration % 10 == 0 or iteration <= 20):
-            tensor = torch.LongTensor(2).to(device=opt.device)
-            size_factor = opt.input_size[1] * 1. / opt.input_size[0]
-            size = np.random.randint(*opt.random_size)
-            size = (int(32 * size), 32 * int(size * size_factor))
-            tensor[0], tensor[1] = size[0], size[1]
-            if iteration <= 10:
-                # initialize with max size, in case of out of memory during training
-                tensor[0], tensor[1] = int(max(opt.random_size) * 32), int(max(opt.random_size) * 32)
-            train_loader.change_input_dim(multiple=(tensor[0].item(), tensor[1].item()), random_range=None)
-
     bar.finish()
     ret = {k: v.avg for k, v in avg_loss_stats.items()}
     ret['time'] = bar.elapsed_td.total_seconds() / 60.
@@ -114,18 +102,16 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
     best = -1
     iter_per_train_epoch = len(train_loader)
     iter_per_val_epoch = len(val_loader)
-
-    # initialize data loader
-    train_iter = iter(train_loader)
     total_train_iteration = opt.num_epochs * iter_per_train_epoch
 
     # exponential moving average
     ema = ModelEMA(model)
     ema.updates = iter_per_train_epoch * start_epoch
     for epoch in range(start_epoch + 1, opt.num_epochs + 1):
+        train_loader.dataset.shuffle()
         if epoch == opt.num_epochs - opt.no_aug_epochs or no_aug:
+            train_loader.dataset.enable_mosaic = False
             logger.write("--->No mosaic aug now! epoch {}\n".format(epoch))
-            train_loader.close_mosaic()
             if isinstance(model, torch.nn.DataParallel) or isinstance(model, _DataParallel):
                 model.module.loss.use_l1 = True
             else:
@@ -134,15 +120,15 @@ def train(model, scaler, train_loader, val_loader, optimizer, lr_scheduler, star
             logger.write("--->Add additional L1 loss now! epoch {}\n".format(epoch))
 
         logger.scalar_summary("lr_epoch", optimizer.param_groups[0]['lr'], epoch)
-        loss_dict_train, _ = run_epoch(model, optimizer, scaler, ema, "train", epoch, train_iter, iter_per_train_epoch,
-                                       total_train_iteration, train_loader, lr_scheduler)
+        loss_dict_train, _ = run_epoch(model, optimizer, scaler, ema, "train", epoch, train_loader,
+                                       iter_per_train_epoch, total_train_iteration, lr_scheduler)
         logger.write('train epoch: {} |'.format(epoch))
         write_log(loss_dict_train, logger, epoch, "train")
 
         if opt.val_intervals > 0 and epoch % opt.val_intervals == 0:
             logger.write('----------epoch {} start evaluate----------\n'.format(epoch))
             with torch.no_grad():
-                loss_dict_val, preds = run_epoch(ema.ema, optimizer, None, None, "val", epoch, iter(val_loader),
+                loss_dict_val, preds = run_epoch(ema.ema, optimizer, None, None, "val", epoch, val_loader,
                                                  iter_per_val_epoch, iter_per_val_epoch)
             logger.write('----------epoch {} evaluating ----------\n'.format(epoch))
             logger.write('val epoch: {} |'.format(epoch))
