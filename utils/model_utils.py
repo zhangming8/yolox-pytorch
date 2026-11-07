@@ -20,7 +20,7 @@ def clip_grads(model, grad_clip=dict(max_norm=35, norm_type=2)):
 
 def load_model(model, model_path, optimizer=None, scaler=None, resume=False):
     assert os.path.isfile(model_path), "model {} not find".format(model_path)
-    checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage)
+    checkpoint = torch.load(model_path, map_location=lambda storage, loc: storage, weights_only=True)
     print('==>> loaded {}, epoch {}'.format(model_path, checkpoint['epoch']))
     start_epoch = 0
     state_dict_ = checkpoint['state_dict']
